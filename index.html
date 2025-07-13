@@ -72,7 +72,7 @@
     margin: 0 0 0.5rem 0;
     user-select: none;
   }
-  #total-time, #predicted-end {
+  #remaining-time, #total-time, #predicted-end {
     font-size: 1.2rem;
     opacity: 0.6;
     margin: 0 0 0.25rem 0;
@@ -174,6 +174,7 @@
 <div id="overrun"></div>
 <h2 id="section-title">Church Schedule Timer</h2>
 
+<div id="remaining-time">Remaining Schedule Time: --:--</div>
 <div id="total-time">Total Schedule Time: --:--</div>
 <div id="predicted-end">Predicted End: --:--</div>
 
@@ -182,8 +183,8 @@
     <button onclick="startTimer()">Start</button>
     <button onclick="pauseTimer()">Pause</button>
     <button onclick="resetTimer()">Reset</button>
-    <button onclick="nextSection()">Next</button>
     <button onclick="previousSection()">Back</button>
+    <button onclick="nextSection()">Next</button>
   </div>
   <button class="menu-toggle" onclick="toggleMenu()">Toggle Schedule Menu</button>
   <div id="menu-section">
@@ -198,6 +199,7 @@
 </div>
 
 <script>
+  // Firebase config - replace with your own config if needed
   const firebaseConfig = {
     apiKey: "AIzaSyD056thmGLxTwVOU01Qy_KNIqS4aqdW8Bw",
     authDomain: "clockapp-26b10.firebaseapp.com",
@@ -218,7 +220,6 @@
   let isRunning = false;
   let dragStartIndex = null;
 
-  // Format seconds to M:SS
   function format(seconds) {
     const m = Math.floor(Math.abs(seconds) / 60);
     const s = Math.abs(seconds) % 60;
@@ -238,6 +239,7 @@
       overrunEl.textContent = `Overrun: ${format(timeLeft)}`;
     }
     updateProgressBar();
+    updateRemainingTime();
     updateTotalAndEnd();
   }
 
@@ -266,13 +268,20 @@
     }
   }
 
-  // Show total schedule time and predicted end time (now + total schedule time)
+  function updateRemainingTime() {
+    const remainingTimeEl = document.getElementById("remaining-time");
+    let remainingSeconds = timeLeft;
+    for(let i = currentSection + 1; i < sections.length; i++) {
+      remainingSeconds += sections[i].duration;
+    }
+    remainingTimeEl.textContent = "Remaining Schedule Time: " + format(remainingSeconds);
+  }
+
   function updateTotalAndEnd() {
     const totalTimeEl = document.getElementById("total-time");
     const predictedEndEl = document.getElementById("predicted-end");
 
     let totalSeconds = sections.reduce((acc, s) => acc + s.duration, 0);
-
     totalTimeEl.textContent = "Total Schedule Time: " + format(totalSeconds);
 
     const now = new Date();
@@ -392,10 +401,10 @@
     saveState();
   }
 
-  // Drag and Drop for sections reordering
   function dragStart(event, index) {
     dragStartIndex = index;
   }
+
   function dropSection(event) {
     event.preventDefault();
     const target = event.target.closest(".section-item");
@@ -431,26 +440,7 @@
     menu.style.display = menu.style.display === "block" ? "none" : "block";
   }
 
-  // Init
   loadState();
-
-  // If no sections yet, add example data
-  if (sections.length === 0) {
-    sections = [
-      { name: "Opening Prayer", duration: 300 },
-      { name: "Song 1", duration: 240 },
-      { name: "Sermon", duration: 1800 },
-      { name: "Song 2", duration: 300 },
-      { name: "Closing Prayer", duration: 180 }
-    ];
-    currentSection = 0;
-    timeLeft = sections[0].duration;
-    saveState();
-  }
-
-  renderSections();
-  updateDisplay();
-  updateTitle();
 </script>
 
 </body>
