@@ -174,7 +174,7 @@
 <div id="overrun"></div>
 <h2 id="section-title">Church Schedule Timer</h2>
 
-<div id="total-time">Remaining Time: --:--</div>
+<div id="total-time">Total Schedule Time: --:--</div>
 <div id="predicted-end">Predicted End: --:--</div>
 
 <div class="bottom-container">
@@ -198,7 +198,6 @@
 </div>
 
 <script>
-  // Firebase config (use your actual config here)
   const firebaseConfig = {
     apiKey: "AIzaSyD056thmGLxTwVOU01Qy_KNIqS4aqdW8Bw",
     authDomain: "clockapp-26b10.firebaseapp.com",
@@ -266,18 +265,17 @@
     }
   }
 
+  // Show total schedule time and predicted end time (from now + total duration)
   function updateTotalAndEnd() {
     const totalTimeEl = document.getElementById("total-time");
     const predictedEndEl = document.getElementById("predicted-end");
 
-    let remainingSeconds = timeLeft;
-    for(let i = currentSection + 1; i < sections.length; i++) {
-      remainingSeconds += sections[i].duration;
-    }
+    // Sum all durations for total schedule time
+    let totalSeconds = sections.reduce((acc, s) => acc + s.duration, 0);
 
-    totalTimeEl.textContent = "Remaining Time: " + format(remainingSeconds);
+    totalTimeEl.textContent = "Total Schedule Time: " + format(totalSeconds);
 
-    const endDate = new Date(Date.now() + remainingSeconds * 1000);
+    const endDate = new Date(Date.now() + totalSeconds * 1000);
     predictedEndEl.textContent = "Predicted End: " + endDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
   }
 
@@ -320,139 +318,4 @@
     }
     isRunning = true;
     clearInterval(timer);
-    timer = setInterval(() => {
-      timeLeft--;
-      updateDisplay();
-      saveState();
-    }, 1000);
-    saveState();
-  }
-
-  function pauseTimer() {
-    isRunning = false;
-    clearInterval(timer);
-    saveState();
-  }
-
-  function resetTimer() {
-    pauseTimer();
-    if (sections[currentSection]) {
-      timeLeft = sections[currentSection].duration;
-    } else {
-      timeLeft = 0;
-    }
-    updateDisplay();
-    updateTitle();
-    saveState();
-  }
-
-  function nextSection() {
-    pauseTimer();
-    if (currentSection < sections.length - 1) {
-      currentSection++;
-      resetTimer();
-      renderSections();
-      saveState();
-    }
-  }
-
-  function previousSection() {
-    pauseTimer();
-    if (currentSection > 0) {
-      currentSection--;
-      resetTimer();
-      renderSections();
-      saveState();
-    }
-  }
-
-  function addSection() {
-    const name = document.getElementById("section-name").value.trim();
-    const minutes = parseInt(document.getElementById("minutes").value) || 0;
-    const seconds = parseInt(document.getElementById("seconds").value) || 0;
-    const duration = minutes * 60 + seconds;
-    if (!name || duration <= 0) return;
-    sections.push({ name, duration });
-    renderSections();
-    updateTitle();
-    document.getElementById("section-name").value = "";
-    document.getElementById("minutes").value = "";
-    document.getElementById("seconds").value = "";
-    saveState();
-  }
-
-  function removeSection(index) {
-    if (isRunning) return;
-    sections.splice(index, 1);
-    if (currentSection === index) {
-      currentSection = 0;
-      timeLeft = 0;
-      updateDisplay();
-    } else if (currentSection > index) {
-      currentSection--;
-    }
-    renderSections();
-    updateTitle();
-    saveState();
-  }
-
-  function renderSections() {
-    const list = document.getElementById("section-list");
-    list.innerHTML = "";
-    sections.forEach((s, i) => {
-      const div = document.createElement("div");
-      div.className = "section-item";
-      div.setAttribute("draggable", true);
-      div.setAttribute("data-index", i);
-      div.ondragstart = dragStart;
-      if (i === currentSection) div.classList.add("active");
-      div.innerHTML = `
-        <span>${s.name} (${format(s.duration)})</span>
-        <button class="remove-btn" onclick="removeSection(${i})">X</button>
-      `;
-      list.appendChild(div);
-    });
-    updateTitle();
-  }
-
-  function dragStart(e) {
-    dragStartIndex = +e.target.getAttribute("data-index");
-  }
-
-  function dropSection(e) {
-    e.preventDefault();
-    const dropTarget = e.target.closest(".section-item");
-    if (!dropTarget) return;
-    const dropIndex = +dropTarget.getAttribute("data-index");
-    if (dropIndex === dragStartIndex) return;
-    const movedItem = sections.splice(dragStartIndex, 1)[0];
-    sections.splice(dropIndex, 0, movedItem);
-
-    // Adjust currentSection if needed
-    if (currentSection === dragStartIndex) {
-      currentSection = dropIndex;
-    } else if (currentSection > dragStartIndex && currentSection <= dropIndex) {
-      currentSection--;
-    } else if (currentSection < dragStartIndex && currentSection >= dropIndex) {
-      currentSection++;
-    }
-
-    renderSections();
-    saveState();
-  }
-
-  function toggleMenu() {
-    const menu = document.getElementById("menu-section");
-    if (menu.style.display === "block") {
-      menu.style.display = "none";
-    } else {
-      menu.style.display = "block";
-    }
-  }
-
-  // Load initial state from Firebase on page load
-  loadState();
-</script>
-
-</body>
-</html>
+    timer = set
