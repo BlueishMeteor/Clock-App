@@ -199,7 +199,7 @@
 </div>
 
 <script>
-  // Firebase config - replace with your own config if needed
+  // Firebase config
   const firebaseConfig = {
     apiKey: "AIzaSyD056thmGLxTwVOU01Qy_KNIqS4aqdW8Bw",
     authDomain: "clockapp-26b10.firebaseapp.com",
@@ -291,6 +291,7 @@
 
   function saveState() {
     database.ref('timerState').set({
+      secretKey: 'PickAllPokemons98',
       sections,
       currentSection,
       timeLeft,
@@ -302,7 +303,10 @@
     database.ref('timerState').on('value', (snapshot) => {
       const data = snapshot.val();
       if (!data) return;
-
+      if (data.secretKey !== 'PickAllPokemons98') {
+        console.warn("Invalid secret key in data; ignoring update.");
+        return;
+      }
       sections = data.sections || [];
       currentSection = data.currentSection ?? 0;
       timeLeft = data.timeLeft ?? 0;
@@ -358,9 +362,12 @@
   function nextSection() {
     if (currentSection < sections.length - 1) {
       currentSection++;
+      // Keep timer running if it was running
       resetTimer(false);
-      startTimer();
+      updateTitle();
       renderSections();
+      if (isRunning) startTimer();
+      else updateDisplay();
       saveState();
     }
   }
@@ -369,8 +376,10 @@
     if (currentSection > 0) {
       currentSection--;
       resetTimer(false);
-      startTimer();
+      updateTitle();
       renderSections();
+      if (isRunning) startTimer();
+      else updateDisplay();
       saveState();
     }
   }
@@ -384,55 +393,61 @@
     sections.push({ name, duration });
     renderSections();
     updateTitle();
-    saveState();
-
     document.getElementById("section-name").value = "";
     document.getElementById("minutes").value = "";
     document.getElementById("seconds").value = "";
-  }
-
-  function removeSection(index) {
-    if (isRunning) return alert("Pause timer before removing sections.");
-    if (index < 0 || index >= sections.length) return;
-    sections.splice(index, 1);
-    if (currentSection >= sections.length) currentSection = sections.length - 1;
-    resetTimer(false);
-    renderSections();
     saveState();
   }
 
-  function dragStart(event, index) {
-    dragStartIndex = index;
-  }
-
-  function dropSection(event) {
-    event.preventDefault();
-    const target = event.target.closest(".section-item");
-    if (!target) return;
-    const dropIndex = parseInt(target.dataset.index);
-    if (dragStartIndex === null || dropIndex === null || dragStartIndex === dropIndex) return;
-    const moved = sections.splice(dragStartIndex, 1)[0];
-    sections.splice(dropIndex, 0, moved);
-    dragStartIndex = null;
+  function removeSection(index) {
+    if (isRunning) return;
+    sections.splice(index, 1);
+    if (currentSection === index) {
+      currentSection = 0;
+      timeLeft = 0;
+      updateDisplay();
+    } else if (currentSection > index) {
+      currentSection--;
+    }
     renderSections();
+    updateTitle();
     saveState();
   }
 
   function renderSections() {
     const list = document.getElementById("section-list");
     list.innerHTML = "";
-    sections.forEach((section, i) => {
+    sections.forEach((s, i) => {
       const div = document.createElement("div");
-      div.className = "section-item" + (i === currentSection ? " active" : "");
-      div.draggable = true;
-      div.dataset.index = i;
-      div.ondragstart = (e) => dragStart(e, i);
+      div.className = "section-item";
+      div.setAttribute("draggable", true);
+      div.setAttribute("data-index", i);
+      div.ondragstart = dragStart;
+      if (i === currentSection) div.classList.add("active");
       div.innerHTML = `
-        <span>${section.name} (${format(section.duration)})</span>
+        <span>${s.name} (${format(s.duration)})</span>
         <button class="remove-btn" onclick="removeSection(${i})">X</button>
       `;
       list.appendChild(div);
     });
+    updateTitle();
+  }
+
+  function dragStart(e) {
+    dragStartIndex = +e.target.getAttribute("data-index");
+  }
+
+  function dropSection(e) {
+    const dropTarget = e.target.closest(".section-item");
+    if (!dropTarget) return;
+    const dropIndex = +dropTarget.getAttribute("data-index");
+    const item = sections.splice(dragStartIndex, 1)[0];
+    sections.splice(dropIndex, 0, item);
+    if (currentSection === dragStartIndex) currentSection = dropIndex;
+    else if (currentSection > dragStartIndex && currentSection <= dropIndex) currentSection--;
+    else if (currentSection < dragStartIndex && currentSection >= dropIndex) currentSection++;
+    renderSections();
+    saveState();
   }
 
   function toggleMenu() {
@@ -440,8 +455,31 @@
     menu.style.display = menu.style.display === "block" ? "none" : "block";
   }
 
-  loadState();
-</script>
+  // Initialize with a default section if empty
+  function init() {
+    if (sections.length === 0) {
+      sections = [
+        { name: "Song 1", duration: 180 },
+        { name: "Song 2", duration: 240 },
+        { name: "Song 3", duration: 300 }
+      ];
+      currentSection = 0;
+      timeLeft = sections[0].duration;
+      saveState();
+    }
+    renderSections();
+    updateDisplay();
+    updateTitle();
+  }
 
+  window.onload = () => {
+    loadState();
+    setTimeout(() => {
+      if (sections.length === 0) {
+        init();
+      }
+    }, 2000);
+  };
+</script>
 </body>
 </html>
