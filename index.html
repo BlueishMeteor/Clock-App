@@ -1,31 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <!-- Firebase App (the core Firebase SDK) -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<!-- Firebase Realtime Database -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script>
-  const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-    databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT_ID.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
-  };
-    
-  // Initialize Firebase
-  firebase.initializeApp(firebaseConfig);
-</script>
-
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Church Clock App</title>
+
+  <!-- Firebase App (core + database) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
   <style>
     html, body {
-      margin: 0; padding: 0; height: 100%;
+      margin: 0;
+      padding: 0;
+      height: 100%;
       background-color: #000;
       color: #fff;
       font-family: sans-serif;
@@ -38,8 +26,7 @@
       justify-content: center;
       align-items: center;
       height: 100vh;
-      box-sizing: border-box;
-      padding-bottom: 200px; /* space for fixed bottom controls */
+      padding-bottom: 200px;
       text-align: center;
     }
 
@@ -83,7 +70,7 @@
       font-size: 3rem;
       color: #ef4444;
       margin: 0.25rem 0 0.5rem 0;
-      min-height: 3.5rem; /* reserve vertical space */
+      min-height: 3.5rem;
       user-select: none;
     }
 
@@ -94,7 +81,6 @@
       user-select: none;
     }
 
-    /* Bottom fixed container for controls and menu */
     .bottom-container {
       position: fixed;
       bottom: 0;
@@ -104,7 +90,7 @@
       max-width: 600px;
       background: #111;
       border-top: 2px solid #22c55e;
-      padding: 1rem 1rem 2rem 1rem;
+      padding: 1rem;
       box-sizing: border-box;
       display: flex;
       flex-direction: column;
@@ -126,7 +112,6 @@
       font-size: 1rem;
       cursor: pointer;
       min-width: 80px;
-      user-select: none;
     }
 
     .menu-toggle {
@@ -138,8 +123,6 @@
       cursor: pointer;
       width: 100%;
       max-width: 600px;
-      text-align: center;
-      user-select: none;
     }
 
     #menu-section {
@@ -149,21 +132,7 @@
       background: #222;
       padding: 1rem;
       border-radius: 8px;
-      box-sizing: border-box;
-      user-select: none;
       max-height: 200px;
-      overflow-y: auto;
-    }
-
-    #menu-section .controls {
-      justify-content: flex-start;
-      gap: 0.5rem;
-      flex-wrap: nowrap;
-      margin-bottom: 1rem;
-    }
-
-    #section-list {
-      max-height: 120px;
       overflow-y: auto;
     }
 
@@ -193,11 +162,8 @@
 </head>
 <body>
   <h1>Church Clock App</h1>
-
   <div id="timer">--:--</div>
-  <div id="progress-bar-container">
-    <div id="progress-bar"></div>
-  </div>
+  <div id="progress-bar-container"><div id="progress-bar"></div></div>
   <div id="overrun"></div>
   <h2 id="section-title">Church Schedule Timer</h2>
 
@@ -209,43 +175,39 @@
       <button onclick="nextSection()">Next</button>
       <button onclick="previousSection()">Back</button>
     </div>
-
     <button class="menu-toggle" onclick="toggleMenu()">Toggle Schedule Menu</button>
 
     <div id="menu-section">
-      <div class="controls" style="flex-wrap: nowrap; justify-content: flex-start;">
+      <div class="controls" style="justify-content: flex-start;">
         <input type="text" id="section-name" placeholder="Section name" />
-        <input
-          type="number"
-          id="minutes"
-          placeholder="Min"
-          min="0"
-          style="width: 60px; margin-left: 0.5rem"
-        />
-        <input
-          type="number"
-          id="seconds"
-          placeholder="Sec"
-          min="0"
-          max="59"
-          style="width: 60px; margin-left: 0.5rem"
-        />
+        <input type="number" id="minutes" placeholder="Min" min="0" style="width: 60px; margin-left: 0.5rem" />
+        <input type="number" id="seconds" placeholder="Sec" min="0" max="59" style="width: 60px; margin-left: 0.5rem" />
         <button onclick="addSection()" style="margin-left: 0.5rem">Add</button>
       </div>
-      <div
-        id="section-list"
-        ondragover="event.preventDefault()"
-        ondrop="dropSection(event)"
-      ></div>
+      <div id="section-list" ondragover="event.preventDefault()" ondrop="dropSection(event)"></div>
     </div>
   </div>
 
   <script>
+    // Firebase setup
+    const firebaseConfig = {
+      apiKey: "AIzaSyD056thmGLxTwVOU01Qy_KNIqS4aqdW8Bw",
+      authDomain: "clockapp-26b10.firebaseapp.com",
+      databaseURL: "https://clockapp-26b10-default-rtdb.firebaseio.com",
+      projectId: "clockapp-26b10",
+      storageBucket: "clockapp-26b10.appspot.com",
+      messagingSenderId: "381529267609",
+      appId: "1:381529267609:web:3b6565b1b60c2c72acc708"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
+    // App state
     let sections = [];
     let currentSection = 0;
-    let timer = null;
     let timeLeft = 0;
     let isRunning = false;
+    let timer = null;
     let dragStartIndex = null;
 
     function format(seconds) {
@@ -255,51 +217,28 @@
     }
 
     function updateDisplay() {
-      const timerEl = document.getElementById("timer");
-      const overrunEl = document.getElementById("overrun");
-      if (timeLeft >= 0) {
-        timerEl.textContent = format(timeLeft);
-        timerEl.style.color = "#22c55e";
-        overrunEl.textContent = "";
-      } else {
-        timerEl.textContent = "00:00";
-        timerEl.style.color = "#ef4444";
-        overrunEl.textContent = `Overrun: ${format(timeLeft)}`;
-      }
+      document.getElementById("timer").textContent = format(Math.max(0, timeLeft));
+      document.getElementById("overrun").textContent = timeLeft < 0 ? `Overrun: ${format(timeLeft)}` : "";
+      document.getElementById("timer").style.color = timeLeft >= 0 ? "#22c55e" : "#ef4444";
       updateProgressBar();
+      saveState();
     }
 
     function updateProgressBar() {
       const total = sections[currentSection]?.duration || 1;
-      const remaining = Math.max(timeLeft, 0);
-      const percent = ((total - remaining) / total) * 100;
-      const progressBar = document.getElementById("progress-bar");
-      progressBar.style.width = `${percent}%`;
-
-      if (percent < 50) {
-        progressBar.style.backgroundColor = "#22c55e"; // green
-      } else if (percent < 80) {
-        progressBar.style.backgroundColor = "#facc15"; // yellow
-      } else {
-        progressBar.style.backgroundColor = "#ef4444"; // red
-      }
+      const percent = ((total - Math.max(timeLeft, 0)) / total) * 100;
+      const bar = document.getElementById("progress-bar");
+      bar.style.width = `${percent}%`;
+      bar.style.backgroundColor = percent < 50 ? "#22c55e" : percent < 80 ? "#facc15" : "#ef4444";
     }
 
     function updateTitle() {
-      const titleEl = document.getElementById("section-title");
-      if (sections[currentSection]) {
-        titleEl.textContent = sections[currentSection].name;
-      } else {
-        titleEl.textContent = "Church Schedule Timer";
-      }
+      document.getElementById("section-title").textContent = sections[currentSection]?.name || "Church Schedule Timer";
     }
 
     function startTimer() {
-      if (sections[currentSection] === undefined || isRunning) return;
-      if (timeLeft <= 0) {
-        timeLeft = sections[currentSection].duration;
-        updateDisplay();
-      }
+      if (!sections[currentSection] || isRunning) return;
+      if (timeLeft <= 0) timeLeft = sections[currentSection].duration;
       isRunning = true;
       clearInterval(timer);
       timer = setInterval(() => {
@@ -311,35 +250,28 @@
     function pauseTimer() {
       isRunning = false;
       clearInterval(timer);
+      saveState();
     }
 
     function resetTimer() {
       pauseTimer();
-      if (sections[currentSection]) {
-        timeLeft = sections[currentSection].duration;
-      } else {
-        timeLeft = 0;
-      }
+      timeLeft = sections[currentSection]?.duration || 0;
       updateDisplay();
       updateTitle();
     }
 
     function nextSection() {
       pauseTimer();
-      if (currentSection < sections.length - 1) {
-        currentSection++;
-        resetTimer();
-        renderSections();
-      }
+      if (currentSection < sections.length - 1) currentSection++;
+      resetTimer();
+      renderSections();
     }
 
     function previousSection() {
       pauseTimer();
-      if (currentSection > 0) {
-        currentSection--;
-        resetTimer();
-        renderSections();
-      }
+      if (currentSection > 0) currentSection--;
+      resetTimer();
+      renderSections();
     }
 
     function addSection() {
@@ -351,24 +283,19 @@
       sections.push({ name, duration });
       renderSections();
       updateTitle();
-      // Clear inputs
       document.getElementById("section-name").value = "";
       document.getElementById("minutes").value = "";
       document.getElementById("seconds").value = "";
+      saveState();
     }
 
     function removeSection(index) {
       if (isRunning) return;
       sections.splice(index, 1);
-      if (currentSection === index) {
-        currentSection = 0;
-        timeLeft = 0;
-        updateDisplay();
-      } else if (currentSection > index) {
-        currentSection--;
-      }
+      if (currentSection >= index) currentSection = Math.max(0, currentSection - 1);
+      resetTimer();
       renderSections();
-      updateTitle();
+      saveState();
     }
 
     function renderSections() {
@@ -387,7 +314,6 @@
         `;
         list.appendChild(div);
       });
-      updateTitle();
     }
 
     function dragStart(e) {
@@ -395,15 +321,14 @@
     }
 
     function dropSection(e) {
-      const dropTarget = e.target.closest(".section-item");
-      if (!dropTarget) return;
-      const dropIndex = +dropTarget.getAttribute("data-index");
+      const target = e.target.closest(".section-item");
+      if (!target) return;
+      const dropIndex = +target.getAttribute("data-index");
       const item = sections.splice(dragStartIndex, 1)[0];
       sections.splice(dropIndex, 0, item);
       if (currentSection === dragStartIndex) currentSection = dropIndex;
-      else if (currentSection > dragStartIndex && currentSection <= dropIndex) currentSection--;
-      else if (currentSection < dragStartIndex && currentSection >= dropIndex) currentSection++;
       renderSections();
+      saveState();
     }
 
     function toggleMenu() {
@@ -411,12 +336,31 @@
       menu.style.display = menu.style.display === "block" ? "none" : "block";
     }
 
-    // Initialize with one default section so timer doesn't start empty
-    if (sections.length === 0) {
-      sections.push({ name: "Welcome", duration: 180 }); // 3 minutes default
+    function saveState() {
+      database.ref('timerState').set({
+        currentSection,
+        timeLeft,
+        isRunning,
+        sections
+      });
     }
-    resetTimer();
-    renderSections();
+
+    function loadState() {
+      database.ref('timerState').on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (!data) return;
+        currentSection = data.currentSection || 0;
+        timeLeft = data.timeLeft || 0;
+        isRunning = data.isRunning || false;
+        sections = data.sections || [];
+        renderSections();
+        updateDisplay();
+        if (isRunning) startTimer();
+      });
+    }
+
+    // Initialize
+    loadState();
   </script>
 </body>
 </html>
