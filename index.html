@@ -218,6 +218,7 @@
   let isRunning = false;
   let dragStartIndex = null;
 
+  // Format seconds to M:SS
   function format(seconds) {
     const m = Math.floor(Math.abs(seconds) / 60);
     const s = Math.abs(seconds) % 60;
@@ -265,18 +266,18 @@
     }
   }
 
-  // Show total schedule time and predicted end time (from now + total duration)
+  // Show total schedule time and predicted end time (now + total schedule time)
   function updateTotalAndEnd() {
     const totalTimeEl = document.getElementById("total-time");
     const predictedEndEl = document.getElementById("predicted-end");
 
-    // Sum all durations for total schedule time
     let totalSeconds = sections.reduce((acc, s) => acc + s.duration, 0);
 
     totalTimeEl.textContent = "Total Schedule Time: " + format(totalSeconds);
 
-    const endDate = new Date(Date.now() + totalSeconds * 1000);
-    predictedEndEl.textContent = "Predicted End: " + endDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    const now = new Date();
+    const predictedEnd = new Date(now.getTime() + totalSeconds * 1000);
+    predictedEndEl.textContent = "Predicted End: " + predictedEnd.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
   }
 
   function saveState() {
@@ -303,14 +304,14 @@
       updateTitle();
 
       if (isRunning) {
-        startTimer();
+        startTimer(false);
       } else {
-        pauseTimer();
+        pauseTimer(false);
       }
     });
   }
 
-  function startTimer() {
+  function startTimer(save = true) {
     if (!sections[currentSection] || isRunning) return;
     if (timeLeft <= 0) {
       timeLeft = sections[currentSection].duration;
@@ -318,4 +319,139 @@
     }
     isRunning = true;
     clearInterval(timer);
-    timer = set
+    timer = setInterval(() => {
+      timeLeft--;
+      updateDisplay();
+      if (save) saveState();
+      if (timeLeft < -600) pauseTimer(save); // auto pause after 10 min overrun
+    }, 1000);
+    if (save) saveState();
+  }
+
+  function pauseTimer(save = true) {
+    isRunning = false;
+    clearInterval(timer);
+    if (save) saveState();
+  }
+
+  function resetTimer(save = true) {
+    pauseTimer(save);
+    if (sections[currentSection]) {
+      timeLeft = sections[currentSection].duration;
+    } else {
+      timeLeft = 0;
+    }
+    updateDisplay();
+    updateTitle();
+    if (save) saveState();
+  }
+
+  function nextSection() {
+    if (currentSection < sections.length - 1) {
+      currentSection++;
+      resetTimer(false);
+      startTimer();
+      renderSections();
+      saveState();
+    }
+  }
+
+  function previousSection() {
+    if (currentSection > 0) {
+      currentSection--;
+      resetTimer(false);
+      startTimer();
+      renderSections();
+      saveState();
+    }
+  }
+
+  function addSection() {
+    const name = document.getElementById("section-name").value.trim();
+    const minutes = parseInt(document.getElementById("minutes").value) || 0;
+    const seconds = parseInt(document.getElementById("seconds").value) || 0;
+    const duration = minutes * 60 + seconds;
+    if (!name || duration <= 0) return;
+    sections.push({ name, duration });
+    renderSections();
+    updateTitle();
+    saveState();
+
+    document.getElementById("section-name").value = "";
+    document.getElementById("minutes").value = "";
+    document.getElementById("seconds").value = "";
+  }
+
+  function removeSection(index) {
+    if (isRunning) return alert("Pause timer before removing sections.");
+    if (index < 0 || index >= sections.length) return;
+    sections.splice(index, 1);
+    if (currentSection >= sections.length) currentSection = sections.length - 1;
+    resetTimer(false);
+    renderSections();
+    saveState();
+  }
+
+  // Drag and Drop for sections reordering
+  function dragStart(event, index) {
+    dragStartIndex = index;
+  }
+  function dropSection(event) {
+    event.preventDefault();
+    const target = event.target.closest(".section-item");
+    if (!target) return;
+    const dropIndex = parseInt(target.dataset.index);
+    if (dragStartIndex === null || dropIndex === null || dragStartIndex === dropIndex) return;
+    const moved = sections.splice(dragStartIndex, 1)[0];
+    sections.splice(dropIndex, 0, moved);
+    dragStartIndex = null;
+    renderSections();
+    saveState();
+  }
+
+  function renderSections() {
+    const list = document.getElementById("section-list");
+    list.innerHTML = "";
+    sections.forEach((section, i) => {
+      const div = document.createElement("div");
+      div.className = "section-item" + (i === currentSection ? " active" : "");
+      div.draggable = true;
+      div.dataset.index = i;
+      div.ondragstart = (e) => dragStart(e, i);
+      div.innerHTML = `
+        <span>${section.name} (${format(section.duration)})</span>
+        <button class="remove-btn" onclick="removeSection(${i})">X</button>
+      `;
+      list.appendChild(div);
+    });
+  }
+
+  function toggleMenu() {
+    const menu = document.getElementById("menu-section");
+    menu.style.display = menu.style.display === "block" ? "none" : "block";
+  }
+
+  // Init
+  loadState();
+
+  // If no sections yet, add example data
+  if (sections.length === 0) {
+    sections = [
+      { name: "Opening Prayer", duration: 300 },
+      { name: "Song 1", duration: 240 },
+      { name: "Sermon", duration: 1800 },
+      { name: "Song 2", duration: 300 },
+      { name: "Closing Prayer", duration: 180 }
+    ];
+    currentSection = 0;
+    timeLeft = sections[0].duration;
+    saveState();
+  }
+
+  renderSections();
+  updateDisplay();
+  updateTitle();
+</script>
+
+</body>
+</html>
