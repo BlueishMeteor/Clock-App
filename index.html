@@ -1,4 +1,4 @@
-rewrite this index <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
@@ -223,7 +223,7 @@ rewrite this index <!DOCTYPE html>
   function format(seconds) {
     const m = Math.floor(Math.abs(seconds) / 60);
     const s = Math.abs(seconds) % 60;
-    return `${m}:${s.toString().padStart(2, "0")}`;
+    return ${m}:${s.toString().padStart(2, "0")};
   }
 
   function updateDisplay() {
@@ -236,7 +236,7 @@ rewrite this index <!DOCTYPE html>
     } else {
       timerEl.textContent = "00:00";
       timerEl.style.color = "#ef4444";
-      overrunEl.textContent = `Overrun: ${format(timeLeft)}`;
+      overrunEl.textContent = Overrun: ${format(timeLeft)};
     }
     updateProgressBar();
     updateRemainingTime();
@@ -248,7 +248,7 @@ rewrite this index <!DOCTYPE html>
     const remaining = Math.max(timeLeft, 0);
     const percent = ((total - remaining) / total) * 100;
     const progressBar = document.getElementById("progress-bar");
-    progressBar.style.width = `${percent}%`;
+    progressBar.style.width = ${percent}%;
 
     if (percent < 50) {
       progressBar.style.backgroundColor = "#22c55e";
@@ -424,10 +424,10 @@ rewrite this index <!DOCTYPE html>
       div.setAttribute("data-index", i);
       div.ondragstart = dragStart;
       if (i === currentSection) div.classList.add("active");
-      div.innerHTML = `
+      div.innerHTML = 
         <span>${s.name} (${format(s.duration)})</span>
         <button class="remove-btn" onclick="removeSection(${i})">X</button>
-      `;
+      ;
       list.appendChild(div);
     });
     updateTitle();
@@ -482,4 +482,4 @@ rewrite this index <!DOCTYPE html>
   };
 </script>
 </body>
-</html>
+</html> 
