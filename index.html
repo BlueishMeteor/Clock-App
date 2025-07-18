@@ -79,32 +79,124 @@
     margin: 0.25rem 0;
     user-select: none;
   }
+  .bottom-container {
+    position: fixed;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 600px;
+    background: #111;
+    border-top: 2px solid #22c55e;
+    padding: 1rem 1rem 2rem 1rem;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    z-index: 10;
+  }
   .controls {
-    margin-top: 1rem;
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    width: 100%;
   }
   button {
-    margin: 0 0.5rem;
     padding: 0.5rem 1rem;
     font-size: 1rem;
     cursor: pointer;
+    min-width: 80px;
     user-select: none;
+  }
+  .menu-toggle {
+    background: #444;
+    color: #fff;
+    border: none;
+    padding: 0.5rem 1rem;
+    font-size: 1rem;
+    cursor: pointer;
+    width: 100%;
+    max-width: 600px;
+    text-align: center;
+    user-select: none;
+  }
+  #menu-section {
+    display: none;
+    width: 100%;
+    max-width: 600px;
+    background: #222;
+    padding: 1rem;
+    border-radius: 8px;
+    box-sizing: border-box;
+    user-select: none;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  #menu-section .controls {
+    justify-content: flex-start;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+    margin-bottom: 1rem;
+  }
+  #section-list {
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  .section-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #111;
+    margin-bottom: 0.5rem;
+    padding: 0.5rem;
+    border-radius: 5px;
+    cursor: move;
+  }
+  .section-item.active {
+    border: 2px solid #22c55e;
+  }
+  .remove-btn {
+    background: #ef4444;
+    color: white;
+    border: none;
+    padding: 0.3rem 0.6rem;
+    cursor: pointer;
   }
 </style>
 </head>
 <body>
 
 <h1>Church Clock App</h1>
+
 <div id="timer">--:--</div>
 <div id="progress-bar-container"><div id="progress-bar"></div></div>
 <div id="overrun"></div>
 <h2 id="section-title">Church Schedule Timer</h2>
+
 <div id="remaining-time">Remaining Schedule Time: --:--</div>
 <div id="total-time">Total Schedule Time: --:--</div>
 <div id="predicted-end">Predicted End: --:--</div>
 
-<div class="controls">
-  <button onclick="startTimer()">Start</button>
-  <button onclick="pauseTimer()">Pause</button>
+<div class="bottom-container">
+  <div class="controls">
+    <button onclick="startTimer()">Start</button>
+    <button onclick="pauseTimer()">Pause</button>
+    <button onclick="resetTimer()">Reset</button>
+    <button onclick="previousSection()">Back</button>
+    <button onclick="nextSection()">Next</button>
+  </div>
+  <button class="menu-toggle" onclick="toggleMenu()">Toggle Schedule Menu</button>
+  <div id="menu-section">
+    <div class="controls" style="flex-wrap: nowrap; justify-content: flex-start;">
+      <input type="text" id="section-name" placeholder="Section name" />
+      <input type="number" id="minutes" placeholder="Min" min="0" style="width: 60px; margin-left: 0.5rem" />
+      <input type="number" id="seconds" placeholder="Sec" min="0" max="59" style="width: 60px; margin-left: 0.5rem" />
+      <button onclick="addSection()" style="margin-left: 0.5rem">Add</button>
+    </div>
+    <div id="section-list" ondragover="event.preventDefault()" ondrop="dropSection(event)"></div>
+  </div>
 </div>
 
 <script>
@@ -126,6 +218,7 @@
   let timeLeft = 0;
   let isRunning = false;
   let timerInterval = null;
+  let dragStartIndex = null;
 
   function format(seconds) {
     const m = Math.floor(Math.abs(seconds) / 60);
@@ -220,6 +313,113 @@
     saveState();
   }
 
+  function resetTimer() {
+    pauseTimer();
+    if (sections[currentSection]) {
+      timeLeft = sections[currentSection].duration;
+    } else {
+      timeLeft = 0;
+    }
+    updateDisplay();
+    saveState();
+  }
+
+  function nextSection() {
+    if (currentSection < sections.length - 1) {
+      currentSection++;
+      resetTimer();
+      updateTitle();
+      saveState();
+    }
+  }
+
+  function previousSection() {
+    if (currentSection > 0) {
+      currentSection--;
+      resetTimer();
+      updateTitle();
+      saveState();
+    }
+  }
+
+  function addSection() {
+    const nameInput = document.getElementById("section-name");
+    const minInput = document.getElementById("minutes");
+    const secInput = document.getElementById("seconds");
+
+    const name = nameInput.value.trim();
+    const minutes = parseInt(minInput.value) || 0;
+    const seconds = parseInt(secInput.value) || 0;
+    const duration = minutes * 60 + seconds;
+
+    if (!name || duration <= 0) return;
+
+    sections.push({ name, duration });
+    nameInput.value = "";
+    minInput.value = "";
+    secInput.value = "";
+    renderSections();
+    saveState();
+  }
+
+  function removeSection(index) {
+    if (isRunning) return;
+    sections.splice(index, 1);
+    if (currentSection === index) {
+      currentSection = 0;
+      timeLeft = 0;
+      updateDisplay();
+    } else if (currentSection > index) {
+      currentSection--;
+    }
+    renderSections();
+    updateTitle();
+    saveState();
+  }
+
+  function renderSections() {
+    const list = document.getElementById("section-list");
+    list.innerHTML = "";
+    sections.forEach((s, i) => {
+      const div = document.createElement("div");
+      div.className = "section-item";
+      div.setAttribute("draggable", true);
+      div.setAttribute("data-index", i);
+      div.ondragstart = dragStart;
+      if (i === currentSection) div.classList.add("active");
+      div.innerHTML = `
+        <span>${s.name} (${format(s.duration)})</span>
+        <button class="remove-btn" onclick="removeSection(${i})">X</button>
+      `;
+      list.appendChild(div);
+    });
+    updateTitle();
+  }
+
+  function dragStart(e) {
+    dragStartIndex = +e.target.getAttribute("data-index");
+  }
+
+  function dropSection(e) {
+    const dropTarget = e.target.closest(".section-item");
+    if (!dropTarget) return;
+    const dropIndex = +dropTarget.getAttribute("data-index");
+    const item = sections.splice(dragStartIndex, 1)[0];
+    sections.splice(dropIndex, 0, item);
+
+    if (currentSection === dragStartIndex) currentSection = dropIndex;
+    else if (currentSection > dragStartIndex && currentSection <= dropIndex) currentSection--;
+    else if (currentSection < dragStartIndex && currentSection >= dropIndex) currentSection++;
+
+    renderSections();
+    saveState();
+  }
+
+  function toggleMenu() {
+    const menu = document.getElementById("menu-section");
+    menu.style.display = menu.style.display === "block" ? "none" : "block";
+  }
+
   function saveState() {
     database.ref('timerState').set({
       sections,
@@ -227,28 +427,3 @@
       timeLeft,
       isRunning,
     });
-  }
-
-  function loadState() {
-    database.ref('timerState').on('value', (snapshot) => {
-      const data = snapshot.val();
-      if (!data) return;
-      sections = data.sections || [];
-      currentSection = data.currentSection ?? 0;
-      timeLeft = data.timeLeft ?? 0;
-      isRunning = data.isRunning || false;
-      updateDisplay();
-      if (isRunning) {
-        startTimer();
-      } else {
-        pauseTimer();
-      }
-    });
-  }
-
-  window.onload = () => {
-    loadState();
-  };
-</script>
-</body>
-</html>
