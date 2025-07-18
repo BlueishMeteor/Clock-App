@@ -359,14 +359,25 @@
     if (save) saveState();
   }
 
+  // Keep timer running continuously when switching sections
   function nextSection() {
     if (currentSection < sections.length - 1) {
       currentSection++;
-      resetTimer(false);
+      timeLeft = sections[currentSection].duration;
       updateTitle();
       renderSections();
-      if (isRunning) startTimer();
-      else updateDisplay();
+      updateDisplay();
+
+      if (isRunning) {
+        clearInterval(timer);
+        timer = setInterval(() => {
+          timeLeft--;
+          updateDisplay();
+          saveState();
+          if (timeLeft < -600) pauseTimer();
+        }, 1000);
+      }
+
       saveState();
     }
   }
@@ -374,11 +385,21 @@
   function previousSection() {
     if (currentSection > 0) {
       currentSection--;
-      resetTimer(false);
+      timeLeft = sections[currentSection].duration;
       updateTitle();
       renderSections();
-      if (isRunning) startTimer();
-      else updateDisplay();
+      updateDisplay();
+
+      if (isRunning) {
+        clearInterval(timer);
+        timer = setInterval(() => {
+          timeLeft--;
+          updateDisplay();
+          saveState();
+          if (timeLeft < -600) pauseTimer();
+        }, 1000);
+      }
+
       saveState();
     }
   }
@@ -440,30 +461,21 @@
     const dropTarget = e.target.closest(".section-item");
     if (!dropTarget) return;
     const dropIndex = +dropTarget.getAttribute("data-index");
-    if (dragStartIndex === null || dropIndex === null) return;
-
     const item = sections.splice(dragStartIndex, 1)[0];
     sections.splice(dropIndex, 0, item);
-
-    // Adjust currentSection index accordingly
     if (currentSection === dragStartIndex) currentSection = dropIndex;
     else if (currentSection > dragStartIndex && currentSection <= dropIndex) currentSection--;
     else if (currentSection < dragStartIndex && currentSection >= dropIndex) currentSection++;
-
     renderSections();
     saveState();
   }
 
   function toggleMenu() {
     const menu = document.getElementById("menu-section");
-    if (menu.style.display === "block") {
-      menu.style.display = "none";
-    } else {
-      menu.style.display = "block";
-    }
+    menu.style.display = menu.style.display === "block" ? "none" : "block";
   }
 
-  // Initialize with a default schedule if none exists
+  // Initialize with default sections if none saved
   function init() {
     if (sections.length === 0) {
       sections = [
@@ -489,6 +501,5 @@
     }, 2000);
   };
 </script>
-
 </body>
 </html>
