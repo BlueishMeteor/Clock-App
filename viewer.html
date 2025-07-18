@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Church Clock Viewer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Church Clock Viewer - Mobile Friendly</title>
 
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -14,29 +14,31 @@
     margin: 0; padding: 0; height: 100%;
     background-color: #000;
     color: #fff;
-    font-family: sans-serif;
-    overflow-x: hidden;
-  }
-  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    height: 100vh;
-    box-sizing: border-box;
     text-align: center;
+    overflow: hidden;
+    padding: 0 5vw;
+    box-sizing: border-box;
   }
   #timer {
-    font-size: 10rem;
-    color: #22c55e;
     font-weight: 900;
-    margin: 0;
-    user-select: none;
+    color: #22c55e;
     line-height: 1;
+    user-select: none;
+    font-size: 20vw;
+    max-font-size: 120px;
+    min-font-size: 40px;
+    padding: 0 5vw;
+    box-sizing: border-box;
   }
   #progress-bar-container {
-    width: 50%;
-    height: 8px;
+    width: 80vw;
+    max-width: 500px;
+    height: 10px;
     background: #333;
     border-radius: 10px;
     overflow: hidden;
@@ -49,17 +51,38 @@
     transition: width 1s linear, background-color 0.5s ease;
   }
   #overrun {
-    font-size: 2rem;
+    font-size: 5vw;
     color: #ef4444;
     margin: 0.25rem 0 0.5rem 0;
     min-height: 2.5rem;
     user-select: none;
   }
   #section-title {
-    font-size: 3rem;
+    font-size: 6vw;
     opacity: 0.8;
     margin: 0 0 0.5rem 0;
     user-select: none;
+  }
+  #remaining-time, #total-time, #predicted-end {
+    font-size: 4vw;
+    opacity: 0.6;
+    margin: 0.2rem 0;
+    user-select: none;
+  }
+
+  @media (min-width: 600px) {
+    #timer {
+      font-size: 120px !important;
+    }
+    #overrun {
+      font-size: 24px !important;
+    }
+    #section-title {
+      font-size: 32px !important;
+    }
+    #remaining-time, #total-time, #predicted-end {
+      font-size: 16px !important;
+    }
   }
 </style>
 </head>
@@ -70,8 +93,12 @@
 <div id="overrun"></div>
 <h2 id="section-title">Loading...</h2>
 
+<div id="remaining-time">Remaining Schedule Time: --:--</div>
+<div id="total-time">Total Schedule Time: --:--</div>
+<div id="predicted-end">Predicted End: --:--</div>
+
 <script>
-  // Your Firebase config (copy exactly from your controller)
+  // Your Firebase config (copy from your index)
   const firebaseConfig = {
     apiKey: "AIzaSyD056thmGLxTwVOU01Qy_KNIqS4aqdW8Bw",
     authDomain: "clockapp-26b10.firebaseapp.com",
@@ -82,7 +109,6 @@
     measurementId: "G-SX7DKY8WPQ"
   };
 
-  // Initialize Firebase
   firebase.initializeApp(firebaseConfig);
   const database = firebase.database();
 
@@ -90,15 +116,16 @@
   const overrunEl = document.getElementById("overrun");
   const sectionTitleEl = document.getElementById("section-title");
   const progressBar = document.getElementById("progress-bar");
+  const remainingTimeEl = document.getElementById("remaining-time");
+  const totalTimeEl = document.getElementById("total-time");
+  const predictedEndEl = document.getElementById("predicted-end");
 
-  // Format seconds to MM:SS
   function format(seconds) {
     const m = Math.floor(Math.abs(seconds) / 60);
     const s = Math.abs(seconds) % 60;
     return `${m}:${s.toString().padStart(2, "0")}`;
   }
 
-  // Update progress bar color and width
   function updateProgressBar(timeLeft, total) {
     if (total <= 0) return;
     const remaining = Math.max(timeLeft, 0);
@@ -106,22 +133,35 @@
     progressBar.style.width = `${percent}%`;
 
     if (percent < 50) {
-      progressBar.style.backgroundColor = "#22c55e"; // green
+      progressBar.style.backgroundColor = "#22c55e";
     } else if (percent < 80) {
-      progressBar.style.backgroundColor = "#facc15"; // yellow
+      progressBar.style.backgroundColor = "#facc15";
     } else {
-      progressBar.style.backgroundColor = "#ef4444"; // red
+      progressBar.style.backgroundColor = "#ef4444";
     }
   }
 
-  // Listen to changes in Realtime Database path "timerState"
-  database.ref('timerState').on('value', (snapshot) => {
-    const data = snapshot.val();
+  function calculateRemaining(sections, currentSection, timeLeft) {
+    let remainingSeconds = timeLeft;
+    for (let i = currentSection + 1; i < sections.length; i++) {
+      remainingSeconds += sections[i].duration;
+    }
+    return remainingSeconds;
+  }
+
+  function calculateTotal(sections) {
+    return sections.reduce((acc, s) => acc + s.duration, 0);
+  }
+
+  function updateUI(data) {
     if (!data) {
       timerEl.textContent = "--:--";
       sectionTitleEl.textContent = "No Timer Data";
       progressBar.style.width = "0%";
       overrunEl.textContent = "";
+      remainingTimeEl.textContent = "Remaining Schedule Time: --:--";
+      totalTimeEl.textContent = "Total Schedule Time: --:--";
+      predictedEndEl.textContent = "Predicted End: --:--";
       return;
     }
 
@@ -133,16 +173,13 @@
     const sections = data.sections || [];
     const currentSection = data.currentSection ?? 0;
     let timeLeft = data.timeLeft ?? 0;
-    const isRunning = data.isRunning || false;
 
-    // Section title
     if (sections[currentSection]) {
       sectionTitleEl.textContent = sections[currentSection].name;
     } else {
       sectionTitleEl.textContent = "No Active Section";
     }
 
-    // Timer and Overrun
     if (timeLeft >= 0) {
       timerEl.textContent = format(timeLeft);
       timerEl.style.color = "#22c55e";
@@ -153,9 +190,22 @@
       overrunEl.textContent = `Overrun: ${format(timeLeft)}`;
     }
 
-    // Update progress bar
     const totalDuration = sections[currentSection]?.duration || 1;
     updateProgressBar(timeLeft, totalDuration);
+
+    const remainingSeconds = calculateRemaining(sections, currentSection, timeLeft);
+    remainingTimeEl.textContent = "Remaining Schedule Time: " + format(remainingSeconds);
+
+    const totalSeconds = calculateTotal(sections);
+    totalTimeEl.textContent = "Total Schedule Time: " + format(totalSeconds);
+
+    const now = new Date();
+    const predictedEnd = new Date(now.getTime() + remainingSeconds * 1000);
+    predictedEndEl.textContent = "Predicted End: " + predictedEnd.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  database.ref('timerState').on('value', (snapshot) => {
+    updateUI(snapshot.val());
   });
 </script>
 </body>
