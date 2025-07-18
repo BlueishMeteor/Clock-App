@@ -3,122 +3,145 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Clock App</title>
+  <title>Schedule Timer</title>
   <style>
     body {
       font-family: sans-serif;
-      margin: 20px;
-      background: #f9f9f9;
+      background: #111;
+      color: white;
+      text-align: center;
+      padding: 2rem;
     }
     #timer {
-      font-size: 48px;
-      margin-bottom: 10px;
+      font-size: 5em;
+      margin-bottom: 1rem;
     }
     button {
-      margin: 5px;
-      padding: 10px 15px;
+      margin: 0.5rem;
+      padding: 0.75rem 1.5rem;
+      font-size: 1.2rem;
     }
     #menu {
       display: none;
-      margin-top: 20px;
-      border: 1px solid #ccc;
-      padding: 15px;
-      background: white;
+      margin-top: 1rem;
+    }
+    #sectionList {
+      list-style: none;
+      padding: 0;
+    }
+    #sectionList li {
+      margin: 0.5rem 0;
     }
   </style>
 </head>
 <body>
-
-  <h1>Clock App</h1>
-  <div id="timer">03:00</div>
-  <div id="controls">
-    <button onclick="startTimer()">Start</button>
-    <button onclick="pauseTimer()">Pause</button>
-    <button onclick="resetTimer()">Reset</button>
-    <button onclick="previousSection()">⏮️</button>
-    <button onclick="nextSection()">⏭️</button>
-  </div>
-
+  <div id="timer">3:00</div>
+  <button onclick="startTimer()">Start</button>
+  <button onclick="pauseTimer()">Pause</button>
+  <button onclick="resetTimer()">Reset</button>
+  <button onclick="previousSection()">Previous</button>
+  <button onclick="nextSection()">Next</button>
   <button onclick="toggleMenu()">Toggle Schedule Menu</button>
 
   <div id="menu">
-    <h2>Schedule</h2>
-    <ul id="scheduleList"></ul>
+    <ul id="sectionList"></ul>
+    <input type="text" id="newSectionName" placeholder="Section Name"/>
+    <input type="number" id="newSectionMinutes" placeholder="Minutes" />
+    <input type="number" id="newSectionSeconds" placeholder="Seconds" />
     <button onclick="addSection()">Add Section</button>
-    <button onclick="removeSection()">Remove Last</button>
-    <button onclick="dropSection()">Drop Current</button>
+    <button onclick="removeSection()">Remove Last Section</button>
+    <button onclick="dropSection()">Drop Current Section</button>
   </div>
 
   <script>
-    let timerInterval;
-    let totalSeconds = 180;
-    let isPaused = false;
+    let schedule = [
+      { name: "Focus", minutes: 3, seconds: 0 },
+      { name: "Break", minutes: 1, seconds: 0 }
+    ];
 
-    let schedule = [180, 300, 120]; // example schedule in seconds
     let currentSectionIndex = 0;
+    let interval = null;
+    let remainingTime = getTotalSeconds(schedule[currentSectionIndex]);
+    let isRunning = false;
+
+    function getTotalSeconds(section) {
+      return section.minutes * 60 + section.seconds;
+    }
+
+    function formatTime(seconds) {
+      const m = Math.floor(seconds / 60).toString().padStart(1, '0');
+      const s = (seconds % 60).toString().padStart(2, '0');
+      return `${m}:${s}`;
+    }
 
     function updateTimerDisplay() {
-      const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
-      const seconds = (totalSeconds % 60).toString().padStart(2, '0');
-      document.getElementById('timer').textContent = `${minutes}:${seconds}`;
+      const timer = document.getElementById("timer");
+      timer.textContent = formatTime(remainingTime);
     }
 
     function startTimer() {
-      if (timerInterval || totalSeconds <= 0) return;
-      timerInterval = setInterval(() => {
-        if (!isPaused) {
-          totalSeconds--;
+      if (isRunning || remainingTime <= 0) return;
+      isRunning = true;
+      interval = setInterval(() => {
+        if (remainingTime > 0) {
+          remainingTime--;
           updateTimerDisplay();
-          if (totalSeconds <= 0) {
-            clearInterval(timerInterval);
-            timerInterval = null;
-            nextSection();
-          }
+        } else {
+          clearInterval(interval);
+          isRunning = false;
         }
       }, 1000);
     }
 
     function pauseTimer() {
-      isPaused = !isPaused;
+      clearInterval(interval);
+      isRunning = false;
     }
 
     function resetTimer() {
-      totalSeconds = schedule[currentSectionIndex];
+      pauseTimer();
+      remainingTime = getTotalSeconds(schedule[currentSectionIndex]);
       updateTimerDisplay();
-      clearInterval(timerInterval);
-      timerInterval = null;
-    }
-
-    function nextSection() {
-      currentSectionIndex = (currentSectionIndex + 1) % schedule.length;
-      resetTimer();
     }
 
     function previousSection() {
-      currentSectionIndex = (currentSectionIndex - 1 + schedule.length) % schedule.length;
-      resetTimer();
+      if (currentSectionIndex > 0) {
+        currentSectionIndex--;
+        resetTimer();
+        renderSectionList();
+      }
+    }
+
+    function nextSection() {
+      if (currentSectionIndex < schedule.length - 1) {
+        currentSectionIndex++;
+        resetTimer();
+        renderSectionList();
+      }
     }
 
     function toggleMenu() {
       const menu = document.getElementById("menu");
       menu.style.display = menu.style.display === "none" ? "block" : "none";
-      renderSchedule();
+      renderSectionList();
     }
 
-    function renderSchedule() {
-      const ul = document.getElementById("scheduleList");
-      ul.innerHTML = '';
-      schedule.forEach((sec, index) => {
+    function renderSectionList() {
+      const list = document.getElementById("sectionList");
+      list.innerHTML = "";
+      schedule.forEach((section, index) => {
         const li = document.createElement("li");
-        li.textContent = `Section ${index + 1}: ${Math.floor(sec / 60)}m ${sec % 60}s`;
-        if (index === currentSectionIndex) li.style.fontWeight = 'bold';
-        ul.appendChild(li);
+        li.textContent = `${index === currentSectionIndex ? "👉 " : ""}${section.name} - ${section.minutes}:${section.seconds.toString().padStart(2, "0")}`;
+        list.appendChild(li);
       });
     }
 
     function addSection() {
-      schedule.push(180); // Add 3 minutes by default
-      renderSchedule();
+      const name = document.getElementById("newSectionName").value || "New Section";
+      const minutes = parseInt(document.getElementById("newSectionMinutes").value) || 0;
+      const seconds = parseInt(document.getElementById("newSectionSeconds").value) || 0;
+      schedule.push({ name, minutes, seconds });
+      renderSectionList();
     }
 
     function removeSection() {
@@ -128,20 +151,22 @@
           currentSectionIndex = schedule.length - 1;
         }
         resetTimer();
-        renderSchedule();
+        renderSectionList();
       }
     }
 
     function dropSection() {
       if (schedule.length > 1) {
         schedule.splice(currentSectionIndex, 1);
-        currentSectionIndex = Math.min(currentSectionIndex, schedule.length - 1);
+        if (currentSectionIndex >= schedule.length) {
+          currentSectionIndex = schedule.length - 1;
+        }
         resetTimer();
-        renderSchedule();
+        renderSectionList();
       }
     }
 
-    // Make all functions globally accessible
+    // Make functions accessible globally
     window.startTimer = startTimer;
     window.pauseTimer = pauseTimer;
     window.resetTimer = resetTimer;
@@ -152,10 +177,9 @@
     window.removeSection = removeSection;
     window.dropSection = dropSection;
 
-    // Initial setup
     window.onload = () => {
-      resetTimer();
-      renderSchedule();
+      updateTimerDisplay();
+      renderSectionList();
     };
   </script>
 </body>
