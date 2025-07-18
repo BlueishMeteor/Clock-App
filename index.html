@@ -223,7 +223,7 @@
   function format(seconds) {
     const m = Math.floor(Math.abs(seconds) / 60);
     const s = Math.abs(seconds) % 60;
-    return ${m}:${s.toString().padStart(2, "0")};
+    return `${m}:${s.toString().padStart(2, "0")}`;
   }
 
   function updateDisplay() {
@@ -236,7 +236,7 @@
     } else {
       timerEl.textContent = "00:00";
       timerEl.style.color = "#ef4444";
-      overrunEl.textContent = Overrun: ${format(timeLeft)};
+      overrunEl.textContent = `Overrun: ${format(timeLeft)}`;
     }
     updateProgressBar();
     updateRemainingTime();
@@ -248,7 +248,7 @@
     const remaining = Math.max(timeLeft, 0);
     const percent = ((total - remaining) / total) * 100;
     const progressBar = document.getElementById("progress-bar");
-    progressBar.style.width = ${percent}%;
+    progressBar.style.width = `${percent}%`;
 
     if (percent < 50) {
       progressBar.style.backgroundColor = "#22c55e";
@@ -362,7 +362,6 @@
   function nextSection() {
     if (currentSection < sections.length - 1) {
       currentSection++;
-      // Keep timer running if it was running
       resetTimer(false);
       updateTitle();
       renderSections();
@@ -424,10 +423,10 @@
       div.setAttribute("data-index", i);
       div.ondragstart = dragStart;
       if (i === currentSection) div.classList.add("active");
-      div.innerHTML = 
+      div.innerHTML = `
         <span>${s.name} (${format(s.duration)})</span>
         <button class="remove-btn" onclick="removeSection(${i})">X</button>
-      ;
+      `;
       list.appendChild(div);
     });
     updateTitle();
@@ -443,9 +442,11 @@
     const dropIndex = +dropTarget.getAttribute("data-index");
     const item = sections.splice(dragStartIndex, 1)[0];
     sections.splice(dropIndex, 0, item);
+
     if (currentSection === dragStartIndex) currentSection = dropIndex;
     else if (currentSection > dragStartIndex && currentSection <= dropIndex) currentSection--;
     else if (currentSection < dragStartIndex && currentSection >= dropIndex) currentSection++;
+
     renderSections();
     saveState();
   }
@@ -455,7 +456,6 @@
     menu.style.display = menu.style.display === "block" ? "none" : "block";
   }
 
-  // Initialize with a default section if empty
   function init() {
     if (sections.length === 0) {
       sections = [
@@ -481,5 +481,6 @@
     }, 2000);
   };
 </script>
+
 </body>
-</html> 
+</html>
