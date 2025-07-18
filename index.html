@@ -163,10 +163,6 @@
     padding: 0.3rem 0.6rem;
     cursor: pointer;
   }
-  .remove-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
 </style>
 </head>
 <body>
@@ -184,8 +180,8 @@
 
 <div class="bottom-container">
   <div class="controls">
-    <button id="startBtn" onclick="startTimer()">Start</button>
-    <button id="pauseBtn" onclick="pauseTimer()">Pause</button>
+    <button onclick="startTimer()">Start</button>
+    <button onclick="pauseTimer()">Pause</button>
     <button onclick="resetTimer()">Reset</button>
     <button onclick="previousSection()">Back</button>
     <button onclick="nextSection()">Next</button>
@@ -196,14 +192,13 @@
       <input type="text" id="section-name" placeholder="Section name" />
       <input type="number" id="minutes" placeholder="Min" min="0" style="width: 60px; margin-left: 0.5rem" />
       <input type="number" id="seconds" placeholder="Sec" min="0" max="59" style="width: 60px; margin-left: 0.5rem" />
-      <button onclick="addSection()" style="margin-left: 0.5rem" id="addBtn">Add</button>
+      <button onclick="addSection()" style="margin-left: 0.5rem">Add</button>
     </div>
     <div id="section-list" ondragover="event.preventDefault()" ondrop="dropSection(event)"></div>
   </div>
 </div>
 
 <script>
-  // Firebase config
   const firebaseConfig = {
     apiKey: "AIzaSyD056thmGLxTwVOU01Qy_KNIqS4aqdW8Bw",
     authDomain: "clockapp-26b10.firebaseapp.com",
@@ -223,8 +218,6 @@
   let isRunning = false;
   let timer = null;
   let dragStartIndex = null;
-  let lastSaveTime = 0;
-  let lastUpdateTimestamp = 0;
 
   function format(seconds) {
     const m = Math.floor(Math.abs(seconds) / 60);
@@ -251,9 +244,9 @@
   }
 
   function updateButtons() {
-    const startBtn = document.getElementById("startBtn");
-    const pauseBtn = document.getElementById("pauseBtn");
-    const addBtn = document.getElementById("addBtn");
+    const startBtn = document.querySelector("button[onclick='startTimer()']");
+    const pauseBtn = document.querySelector("button[onclick='pauseTimer()']");
+    const addBtn = document.querySelector("#menu-section button");
 
     if (isRunning) {
       startBtn.disabled = true;
@@ -313,55 +306,37 @@
   }
 
   function saveState() {
-    const now = Date.now();
-    if (now - lastSaveTime < 1000) return; // throttle saves 1s
-    lastSaveTime = now;
     database.ref('timerState').set({
       sections,
       currentSection,
       timeLeft,
       isRunning,
-      lastUpdateTimestamp: now
-    }).catch(e => console.warn("Firebase save error:", e));
+    });
   }
 
   function loadState() {
-    database.ref('timerState').on('value', snapshot => {
+    database.ref('timerState').on('value', (snapshot) => {
       const data = snapshot.val();
       if (!data) return;
-
-      // Ignore stale data updates
-      if (data.lastUpdateTimestamp && data.lastUpdateTimestamp <= lastSaveTime) {
-        // console.log('Ignoring stale Firebase update');
-        return;
-      }
-
-      lastUpdateTimestamp = data.lastUpdateTimestamp || 0;
-
-      if (Array.isArray(data.sections)) sections = data.sections;
-      currentSection = typeof data.currentSection === "number" ? data.currentSection : 0;
-      timeLeft = typeof data.timeLeft === "number" ? data.timeLeft : 0;
-      isRunning = !!data.isRunning;
+      sections = data.sections || [];
+      currentSection = data.currentSection ?? 0;
+      timeLeft = data.timeLeft ?? 0;
+      isRunning = data.isRunning || false;
 
       renderSections();
       updateDisplay();
       updateTitle();
 
-      // Manage timer interval to sync with Firebase state
-      clearInterval(timer);
       if (isRunning) {
-        timer = setInterval(() => {
-          timeLeft--;
-          updateDisplay();
-          saveState();
-          if (timeLeft < -600) pauseTimer();
-        }, 1000);
+        startTimer(false);
+      } else {
+        pauseTimer(false);
       }
     });
   }
 
-  function startTimer() {
-    if (isRunning || !sections[currentSection]) return;
+  function startTimer(save = true) {
+    if (!sections[currentSection] || isRunning) return;
     if (timeLeft <= 0) {
       timeLeft = sections[currentSection].duration;
       updateDisplay();
@@ -371,28 +346,28 @@
     timer = setInterval(() => {
       timeLeft--;
       updateDisplay();
-      saveState();
-      if (timeLeft < -600) pauseTimer();
+      if (save) saveState();
+      if (timeLeft < -600) pauseTimer(save);
     }, 1000);
-    saveState();
+    if (save) saveState();
   }
 
-  function pauseTimer() {
-    if (!isRunning) return;
+  function pauseTimer(save = true) {
     isRunning = false;
     clearInterval(timer);
-    saveState();
+    if (save) saveState();
   }
 
-  function resetTimer() {
-    pauseTimer();
+  function resetTimer(save = true) {
+    pauseTimer(save);
     if (sections[currentSection]) {
       timeLeft = sections[currentSection].duration;
     } else {
       timeLeft = 0;
     }
     updateDisplay();
-    saveState();
+    updateTitle();
+    if (save) saveState();
   }
 
   function nextSection() {
@@ -402,6 +377,7 @@
       updateTitle();
       renderSections();
       updateDisplay();
+
       if (isRunning) {
         clearInterval(timer);
         timer = setInterval(() => {
@@ -411,6 +387,7 @@
           if (timeLeft < -600) pauseTimer();
         }, 1000);
       }
+
       saveState();
     }
   }
@@ -422,6 +399,7 @@
       updateTitle();
       renderSections();
       updateDisplay();
+
       if (isRunning) {
         clearInterval(timer);
         timer = setInterval(() => {
@@ -431,6 +409,7 @@
           if (timeLeft < -600) pauseTimer();
         }, 1000);
       }
+
       saveState();
     }
   }
@@ -455,37 +434,14 @@
     if (isRunning) return;
     sections.splice(index, 1);
     if (currentSection === index) {
-      currentSection = Math.min(index, sections.length - 1);
-      resetTimer();
+      currentSection = 0;
+      timeLeft = sections[0]?.duration || 0;
     } else if (currentSection > index) {
       currentSection--;
     }
     renderSections();
     updateTitle();
-    saveState();
-  }
-
-  function dragStart(e) {
-    if (isRunning) return;
-    dragStartIndex = +e.target.getAttribute("data-index");
-  }
-
-  function dropSection(e) {
-    if (isRunning) return;
-    const dropTarget = e.target.closest(".section-item");
-    if (!dropTarget) return;
-    const dropIndex = +dropTarget.getAttribute("data-index");
-    if (dragStartIndex === null || dropIndex === null) return;
-
-    const [moved] = sections.splice(dragStartIndex, 1);
-    sections.splice(dropIndex, 0, moved);
-
-    if (currentSection === dragStartIndex) currentSection = dropIndex;
-    else if (currentSection > dragStartIndex && currentSection <= dropIndex) currentSection--;
-    else if (currentSection < dragStartIndex && currentSection >= dropIndex) currentSection++;
-
-    dragStartIndex = null;
-    renderSections();
+    updateDisplay();
     saveState();
   }
 
@@ -495,24 +451,43 @@
     sections.forEach((s, i) => {
       const div = document.createElement("div");
       div.className = "section-item";
+      div.setAttribute("draggable", true);
       div.setAttribute("data-index", i);
-      div.setAttribute("draggable", !isRunning);
       div.ondragstart = dragStart;
       if (i === currentSection) div.classList.add("active");
       div.innerHTML = `
         <span>${s.name} (${format(s.duration)})</span>
-        <button class="remove-btn" onclick="removeSection(${i})" ${isRunning ? "disabled" : ""}>X</button>
+        <button class="remove-btn" onclick="removeSection(${i})">X</button>
       `;
       list.appendChild(div);
     });
+    updateTitle();
+  }
+
+  function dragStart(e) {
+    dragStartIndex = +e.target.getAttribute("data-index");
+  }
+
+  function dropSection(e) {
+    const dropTarget = e.target.closest(".section-item");
+    if (!dropTarget) return;
+    const dropIndex = +dropTarget.getAttribute("data-index");
+    const item = sections.splice(dragStartIndex, 1)[0];
+    sections.splice(dropIndex, 0, item);
+    if (currentSection === dragStartIndex) currentSection = dropIndex;
+    else if (currentSection > dragStartIndex && currentSection <= dropIndex) currentSection--;
+    else if (currentSection < dragStartIndex && currentSection >= dropIndex) currentSection++;
+    renderSections();
+    saveState();
   }
 
   function toggleMenu() {
     const menu = document.getElementById("menu-section");
-    menu.style.display = (menu.style.display === "block") ? "none" : "block";
+    menu.style.display = menu.style.display === "block" ? "none" : "block";
   }
 
-  function initDefaultSections() {
+  // Initialize with default sections if none saved
+  function init() {
     if (sections.length === 0) {
       sections = [
         { name: "Song 1", duration: 180 },
@@ -524,16 +499,15 @@
       saveState();
     }
     renderSections();
-    updateTitle();
     updateDisplay();
+    updateTitle();
   }
 
   window.onload = () => {
     loadState();
-
     setTimeout(() => {
       if (sections.length === 0) {
-        initDefaultSections();
+        init();
       }
     }, 2000);
   };
