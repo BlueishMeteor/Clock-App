@@ -46,8 +46,7 @@
     line-height: 1;
   }
   #progress-bar-container {
-    width: 80%;
-    max-width: 400px;
+    width: 10%;
     height: 8px;
     background: #333;
     border-radius: 10px;
@@ -68,15 +67,15 @@
     user-select: none;
   }
   #section-title {
-    font-size: 2rem;
+    font-size: 2.5rem;
     opacity: 0.8;
-    margin: 0.5rem 0;
+    margin: 0 0 0.5rem 0;
     user-select: none;
   }
   #remaining-time, #total-time, #predicted-end {
-    font-size: 1.1rem;
+    font-size: 1.2rem;
     opacity: 0.6;
-    margin: 0.25rem 0;
+    margin: 0 0 0.25rem 0;
     user-select: none;
   }
   .bottom-container {
@@ -200,11 +199,12 @@
 </div>
 
 <script>
+  // Firebase config
   const firebaseConfig = {
     apiKey: "AIzaSyD056thmGLxTwVOU01Qy_KNIqS4aqdW8Bw",
     authDomain: "clockapp-26b10.firebaseapp.com",
     projectId: "clockapp-26b10",
-    storageBucket: "clockapp-26b10.appspot.com",
+    storageBucket: "clockapp-26b10.firebasestorage.app",
     messagingSenderId: "381529267609",
     appId: "1:381529267609:web:3b6565b1b60c2c72acc708",
     measurementId: "G-SX7DKY8WPQ"
@@ -215,9 +215,9 @@
 
   let sections = [];
   let currentSection = 0;
+  let timer = null;
   let timeLeft = 0;
   let isRunning = false;
-  let timerInterval = null;
   let dragStartIndex = null;
 
   function format(seconds) {
@@ -241,7 +241,6 @@
     updateProgressBar();
     updateRemainingTime();
     updateTotalAndEnd();
-    updateTitle();
   }
 
   function updateProgressBar() {
@@ -257,6 +256,15 @@
       progressBar.style.backgroundColor = "#facc15";
     } else {
       progressBar.style.backgroundColor = "#ef4444";
+    }
+  }
+
+  function updateTitle() {
+    const titleEl = document.getElementById("section-title");
+    if (sections[currentSection]) {
+      titleEl.textContent = sections[currentSection].name;
+    } else {
+      titleEl.textContent = "Church Schedule Timer";
     }
   }
 
@@ -277,58 +285,89 @@
     totalTimeEl.textContent = "Total Schedule Time: " + format(totalSeconds);
 
     const now = new Date();
-    let futureSeconds = timeLeft;
-    for(let i = currentSection + 1; i < sections.length; i++) {
-      futureSeconds += sections[i].duration;
-    }
-    const predictedEnd = new Date(now.getTime() + futureSeconds * 1000);
+    const predictedEnd = new Date(now.getTime() + totalSeconds * 1000);
     predictedEndEl.textContent = "Predicted End: " + predictedEnd.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
   }
 
-  function updateTitle() {
-    document.getElementById("section-title").textContent = sections[currentSection]?.name || "Church Schedule Timer";
+  function saveState() {
+    database.ref('timerState').set({
+      secretKey: 'PickAllPokemons98',
+      sections,
+      currentSection,
+      timeLeft,
+      isRunning,
+    });
   }
 
-  function startTimer() {
-    if (isRunning) return;
-    if (timeLeft <= 0 && sections[currentSection]) {
+  function loadState() {
+    database.ref('timerState').on('value', (snapshot) => {
+      const data = snapshot.val();
+      if (!data) return;
+      if (data.secretKey !== 'PickAllPokemons98') {
+        console.warn("Invalid secret key in data; ignoring update.");
+        return;
+      }
+      sections = data.sections || [];
+      currentSection = data.currentSection ?? 0;
+      timeLeft = data.timeLeft ?? 0;
+      isRunning = data.isRunning || false;
+
+      renderSections();
+      updateDisplay();
+      updateTitle();
+
+      if (isRunning) {
+        startTimer(false);
+      } else {
+        pauseTimer(false);
+      }
+    });
+  }
+
+  function startTimer(save = true) {
+    if (!sections[currentSection] || isRunning) return;
+    if (timeLeft <= 0) {
       timeLeft = sections[currentSection].duration;
+      updateDisplay();
     }
     isRunning = true;
-    clearInterval(timerInterval);
-    timerInterval = setInterval(() => {
+    clearInterval(timer);
+    timer = setInterval(() => {
       timeLeft--;
       updateDisplay();
-      if (timeLeft < -600) { // stop after 10 min overrun
-        pauseTimer();
-      }
-      saveState();
+      if (save) saveState();
+      if (timeLeft < -600) pauseTimer(save); // auto pause after 10 min overrun
     }, 1000);
-    saveState();
+    if (save) saveState();
   }
 
-  function pauseTimer() {
+  function pauseTimer(save = true) {
     isRunning = false;
-    clearInterval(timerInterval);
-    saveState();
+    clearInterval(timer);
+    if (save) saveState();
   }
 
-  function resetTimer() {
-    pauseTimer();
+  function resetTimer(save = true) {
+    pauseTimer(save);
     if (sections[currentSection]) {
       timeLeft = sections[currentSection].duration;
     } else {
       timeLeft = 0;
     }
     updateDisplay();
-    saveState();
+    updateTitle();
+    if (save) saveState();
   }
 
   function nextSection() {
     if (currentSection < sections.length - 1) {
       currentSection++;
-      resetTimer();
+      // Keep timer running if it was running
+      resetTimer(false);
       updateTitle();
+      renderSections();
+      if (isRunning) startTimer();
+      else updateDisplay();
       saveState();
     }
   }
@@ -336,29 +375,27 @@
   function previousSection() {
     if (currentSection > 0) {
       currentSection--;
-      resetTimer();
+      resetTimer(false);
       updateTitle();
+      renderSections();
+      if (isRunning) startTimer();
+      else updateDisplay();
       saveState();
     }
   }
 
   function addSection() {
-    const nameInput = document.getElementById("section-name");
-    const minInput = document.getElementById("minutes");
-    const secInput = document.getElementById("seconds");
-
-    const name = nameInput.value.trim();
-    const minutes = parseInt(minInput.value) || 0;
-    const seconds = parseInt(secInput.value) || 0;
+    const name = document.getElementById("section-name").value.trim();
+    const minutes = parseInt(document.getElementById("minutes").value) || 0;
+    const seconds = parseInt(document.getElementById("seconds").value) || 0;
     const duration = minutes * 60 + seconds;
-
     if (!name || duration <= 0) return;
-
     sections.push({ name, duration });
-    nameInput.value = "";
-    minInput.value = "";
-    secInput.value = "";
     renderSections();
+    updateTitle();
+    document.getElementById("section-name").value = "";
+    document.getElementById("minutes").value = "";
+    document.getElementById("seconds").value = "";
     saveState();
   }
 
@@ -406,11 +443,9 @@
     const dropIndex = +dropTarget.getAttribute("data-index");
     const item = sections.splice(dragStartIndex, 1)[0];
     sections.splice(dropIndex, 0, item);
-
     if (currentSection === dragStartIndex) currentSection = dropIndex;
     else if (currentSection > dragStartIndex && currentSection <= dropIndex) currentSection--;
     else if (currentSection < dragStartIndex && currentSection >= dropIndex) currentSection++;
-
     renderSections();
     saveState();
   }
@@ -420,10 +455,31 @@
     menu.style.display = menu.style.display === "block" ? "none" : "block";
   }
 
-  function saveState() {
-    database.ref('timerState').set({
-      sections,
-      currentSection,
-      timeLeft,
-      isRunning,
-    });
+  // Initialize with a default section if empty
+  function init() {
+    if (sections.length === 0) {
+      sections = [
+        { name: "Song 1", duration: 180 },
+        { name: "Song 2", duration: 240 },
+        { name: "Song 3", duration: 300 }
+      ];
+      currentSection = 0;
+      timeLeft = sections[0].duration;
+      saveState();
+    }
+    renderSections();
+    updateDisplay();
+    updateTitle();
+  }
+
+  window.onload = () => {
+    loadState();
+    setTimeout(() => {
+      if (sections.length === 0) {
+        init();
+      }
+    }, 2000);
+  };
+</script>
+</body>
+</html>
