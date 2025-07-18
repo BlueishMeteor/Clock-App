@@ -1,48 +1,162 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Viewer</title>
-  <style>
-    body {
-      background-color: #111;
-      color: white;
-      font-family: sans-serif;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      font-size: 5rem;
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Church Clock Viewer</title>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background-color: #000;
+    color: #fff;
+    font-family: sans-serif;
+    overflow-x: hidden;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    box-sizing: border-box;
+    text-align: center;
+  }
+  #timer {
+    font-size: 10rem;
+    color: #22c55e;
+    font-weight: 900;
+    margin: 0;
+    user-select: none;
+    line-height: 1;
+  }
+  #progress-bar-container {
+    width: 50%;
+    height: 8px;
+    background: #333;
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 1rem auto 0.5rem auto;
+  }
+  #progress-bar {
+    height: 100%;
+    width: 0%;
+    background: #22c55e;
+    transition: width 1s linear, background-color 0.5s ease;
+  }
+  #overrun {
+    font-size: 2rem;
+    color: #ef4444;
+    margin: 0.25rem 0 0.5rem 0;
+    min-height: 2.5rem;
+    user-select: none;
+  }
+  #section-title {
+    font-size: 3rem;
+    opacity: 0.8;
+    margin: 0 0 0.5rem 0;
+    user-select: none;
+  }
+</style>
 </head>
 <body>
-  <div id="timer">Loading...</div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+<div id="timer">--:--</div>
+<div id="progress-bar-container"><div id="progress-bar"></div></div>
+<div id="overrun"></div>
+<h2 id="section-title">Loading...</h2>
 
-    const firebaseConfig = {
-      // your config
-    };
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+<script>
+  // Your Firebase config (copy exactly from your controller)
+  const firebaseConfig = {
+    apiKey: "AIzaSyD056thmGLxTwVOU01Qy_KNIqS4aqdW8Bw",
+    authDomain: "clockapp-26b10.firebaseapp.com",
+    projectId: "clockapp-26b10",
+    storageBucket: "clockapp-26b10.firebasestorage.app",
+    messagingSenderId: "381529267609",
+    appId: "1:381529267609:web:3b6565b1b60c2c72acc708",
+    measurementId: "G-SX7DKY8WPQ"
+  };
 
-    const params = new URLSearchParams(location.search);
-    const instanceId = params.get('instance') || 'default';
+  // Initialize Firebase
+  firebase.initializeApp(firebaseConfig);
+  const database = firebase.database();
 
-    const docRef = doc(db, 'instances', instanceId);
-    const timerEl = document.getElementById('timer');
+  const timerEl = document.getElementById("timer");
+  const overrunEl = document.getElementById("overrun");
+  const sectionTitleEl = document.getElementById("section-title");
+  const progressBar = document.getElementById("progress-bar");
 
-    onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        timerEl.textContent = data.displayText || '00:00';
-      } else {
-        timerEl.textContent = 'Not Found';
-      }
-    });
-  </script>
+  // Format seconds to MM:SS
+  function format(seconds) {
+    const m = Math.floor(Math.abs(seconds) / 60);
+    const s = Math.abs(seconds) % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  }
+
+  // Update progress bar color and width
+  function updateProgressBar(timeLeft, total) {
+    if (total <= 0) return;
+    const remaining = Math.max(timeLeft, 0);
+    const percent = ((total - remaining) / total) * 100;
+    progressBar.style.width = `${percent}%`;
+
+    if (percent < 50) {
+      progressBar.style.backgroundColor = "#22c55e"; // green
+    } else if (percent < 80) {
+      progressBar.style.backgroundColor = "#facc15"; // yellow
+    } else {
+      progressBar.style.backgroundColor = "#ef4444"; // red
+    }
+  }
+
+  // Listen to changes in Realtime Database path "timerState"
+  database.ref('timerState').on('value', (snapshot) => {
+    const data = snapshot.val();
+    if (!data) {
+      timerEl.textContent = "--:--";
+      sectionTitleEl.textContent = "No Timer Data";
+      progressBar.style.width = "0%";
+      overrunEl.textContent = "";
+      return;
+    }
+
+    if (data.secretKey !== 'PickAllPokemons98') {
+      sectionTitleEl.textContent = "Unauthorized Data";
+      return;
+    }
+
+    const sections = data.sections || [];
+    const currentSection = data.currentSection ?? 0;
+    let timeLeft = data.timeLeft ?? 0;
+    const isRunning = data.isRunning || false;
+
+    // Section title
+    if (sections[currentSection]) {
+      sectionTitleEl.textContent = sections[currentSection].name;
+    } else {
+      sectionTitleEl.textContent = "No Active Section";
+    }
+
+    // Timer and Overrun
+    if (timeLeft >= 0) {
+      timerEl.textContent = format(timeLeft);
+      timerEl.style.color = "#22c55e";
+      overrunEl.textContent = "";
+    } else {
+      timerEl.textContent = "00:00";
+      timerEl.style.color = "#ef4444";
+      overrunEl.textContent = `Overrun: ${format(timeLeft)}`;
+    }
+
+    // Update progress bar
+    const totalDuration = sections[currentSection]?.duration || 1;
+    updateProgressBar(timeLeft, totalDuration);
+  });
+</script>
 </body>
 </html>
