@@ -3,184 +3,161 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Schedule Timer</title>
+  <title>Clock App</title>
   <style>
-    body {
-      font-family: sans-serif;
-      background: #111;
-      color: white;
-      text-align: center;
-      padding: 2rem;
-    }
-    #timer {
-      font-size: 5em;
-      margin-bottom: 1rem;
-    }
-    button {
-      margin: 0.5rem;
-      padding: 0.75rem 1.5rem;
-      font-size: 1.2rem;
-    }
-    #menu {
-      display: none;
-      margin-top: 1rem;
-    }
-    #sectionList {
-      list-style: none;
-      padding: 0;
-    }
-    #sectionList li {
-      margin: 0.5rem 0;
-    }
+    body { font-family: sans-serif; padding: 20px; }
+    .section-item { display: flex; justify-content: space-between; margin: 4px 0; }
+    .active { font-weight: bold; }
+    #menu { display: none; margin-top: 20px; }
   </style>
 </head>
 <body>
-  <div id="timer">3:00</div>
-  <button onclick="startTimer()">Start</button>
-  <button onclick="pauseTimer()">Pause</button>
-  <button onclick="resetTimer()">Reset</button>
-  <button onclick="previousSection()">Previous</button>
-  <button onclick="nextSection()">Next</button>
-  <button onclick="toggleMenu()">Toggle Schedule Menu</button>
 
-  <div id="menu">
-    <ul id="sectionList"></ul>
-    <input type="text" id="newSectionName" placeholder="Section Name"/>
-    <input type="number" id="newSectionMinutes" placeholder="Minutes" />
-    <input type="number" id="newSectionSeconds" placeholder="Seconds" />
-    <button onclick="addSection()">Add Section</button>
-    <button onclick="removeSection()">Remove Last Section</button>
-    <button onclick="dropSection()">Drop Current Section</button>
+  <h1 id="title">Timer</h1>
+  <div>
+    <p id="timer">00:00</p>
+    <button onclick="startTimer()">Start</button>
+    <button onclick="pauseTimer()">Pause</button>
+    <button onclick="resetTimer()">Reset</button>
+    <button onclick="toggleMenu()">☰</button>
   </div>
 
-  <script>
-    let schedule = [
-      { name: "Focus", minutes: 3, seconds: 0 },
-      { name: "Break", minutes: 1, seconds: 0 }
+  <div id="menu">
+    <h3>Sections</h3>
+    <div id="section-list"></div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT.firebaseio.com",
+      projectId: "YOUR_PROJECT",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const timerRef = ref(db, "timer");
+
+    let sections = [
+      { name: "Focus", duration: 180 },
+      { name: "Break", duration: 60 }
     ];
-
-    let currentSectionIndex = 0;
+    let currentSection = 0;
+    let remaining = sections[0].duration;
     let interval = null;
-    let remainingTime = getTotalSeconds(schedule[currentSectionIndex]);
-    let isRunning = false;
+    let isPaused = true;
 
-    function getTotalSeconds(section) {
-      return section.minutes * 60 + section.seconds;
-    }
-
-    function formatTime(seconds) {
-      const m = Math.floor(seconds / 60).toString().padStart(1, '0');
-      const s = (seconds % 60).toString().padStart(2, '0');
+    function format(sec) {
+      const m = Math.floor(sec / 60).toString().padStart(2, '0');
+      const s = (sec % 60).toString().padStart(2, '0');
       return `${m}:${s}`;
     }
 
-    function updateTimerDisplay() {
-      const timer = document.getElementById("timer");
-      timer.textContent = formatTime(remainingTime);
+    function updateDisplay() {
+      document.getElementById("timer").innerText = format(remaining);
+      updateTitle();
+    }
+
+    function updateTitle() {
+      document.title = `⏱️ ${sections[currentSection].name} - ${format(remaining)}`;
+    }
+
+    function renderSections() {
+      const list = document.getElementById("section-list");
+      list.innerHTML = "";
+      sections.forEach((s, i) => {
+        const div = document.createElement("div");
+        div.className = "section-item";
+        if (i === currentSection) div.classList.add("active");
+        div.innerHTML = `
+          <span>${s.name} (${format(s.duration)})</span>
+          <button onclick="removeSection(${i})">X</button>
+        `;
+        list.appendChild(div);
+      });
+    }
+
+    function removeSection(i) {
+      sections.splice(i, 1);
+      if (currentSection >= sections.length) currentSection = 0;
+      remaining = sections[currentSection].duration;
+      updateDisplay();
+      renderSections();
     }
 
     function startTimer() {
-      if (isRunning || remainingTime <= 0) return;
-      isRunning = true;
+      if (!isPaused) return;
+      isPaused = false;
       interval = setInterval(() => {
-        if (remainingTime > 0) {
-          remainingTime--;
-          updateTimerDisplay();
+        if (remaining > 0) {
+          remaining--;
         } else {
-          clearInterval(interval);
-          isRunning = false;
+          currentSection = (currentSection + 1) % sections.length;
+          remaining = sections[currentSection].duration;
         }
+        updateDisplay();
+        set(timerRef, {
+          currentSection,
+          remaining,
+          isPaused
+        });
       }, 1000);
     }
 
     function pauseTimer() {
+      isPaused = true;
       clearInterval(interval);
-      isRunning = false;
+      set(timerRef, {
+        currentSection,
+        remaining,
+        isPaused
+      });
     }
 
     function resetTimer() {
-      pauseTimer();
-      remainingTime = getTotalSeconds(schedule[currentSectionIndex]);
-      updateTimerDisplay();
-    }
-
-    function previousSection() {
-      if (currentSectionIndex > 0) {
-        currentSectionIndex--;
-        resetTimer();
-        renderSectionList();
-      }
-    }
-
-    function nextSection() {
-      if (currentSectionIndex < schedule.length - 1) {
-        currentSectionIndex++;
-        resetTimer();
-        renderSectionList();
-      }
+      clearInterval(interval);
+      remaining = sections[currentSection].duration;
+      isPaused = true;
+      updateDisplay();
+      set(timerRef, {
+        currentSection,
+        remaining,
+        isPaused
+      });
     }
 
     function toggleMenu() {
       const menu = document.getElementById("menu");
-      menu.style.display = menu.style.display === "none" ? "block" : "none";
-      renderSectionList();
+      menu.style.display = menu.style.display === "block" ? "none" : "block";
     }
 
-    function renderSectionList() {
-      const list = document.getElementById("sectionList");
-      list.innerHTML = "";
-      schedule.forEach((section, index) => {
-        const li = document.createElement("li");
-        li.textContent = `${index === currentSectionIndex ? "👉 " : ""}${section.name} - ${section.minutes}:${section.seconds.toString().padStart(2, "0")}`;
-        list.appendChild(li);
-      });
-    }
+    // Sync from Firebase
+    onValue(timerRef, (snapshot) => {
+      const data = snapshot.val();
+      if (!data) return;
+      currentSection = data.currentSection ?? 0;
+      remaining = data.remaining ?? sections[0].duration;
+      isPaused = data.isPaused ?? true;
+      updateDisplay();
+      renderSections();
+      if (!isPaused && !interval) startTimer();
+    });
 
-    function addSection() {
-      const name = document.getElementById("newSectionName").value || "New Section";
-      const minutes = parseInt(document.getElementById("newSectionMinutes").value) || 0;
-      const seconds = parseInt(document.getElementById("newSectionSeconds").value) || 0;
-      schedule.push({ name, minutes, seconds });
-      renderSectionList();
-    }
-
-    function removeSection() {
-      if (schedule.length > 1) {
-        schedule.pop();
-        if (currentSectionIndex >= schedule.length) {
-          currentSectionIndex = schedule.length - 1;
-        }
-        resetTimer();
-        renderSectionList();
-      }
-    }
-
-    function dropSection() {
-      if (schedule.length > 1) {
-        schedule.splice(currentSectionIndex, 1);
-        if (currentSectionIndex >= schedule.length) {
-          currentSectionIndex = schedule.length - 1;
-        }
-        resetTimer();
-        renderSectionList();
-      }
-    }
-
-    // Make functions accessible globally
     window.startTimer = startTimer;
     window.pauseTimer = pauseTimer;
     window.resetTimer = resetTimer;
-    window.previousSection = previousSection;
-    window.nextSection = nextSection;
     window.toggleMenu = toggleMenu;
-    window.addSection = addSection;
     window.removeSection = removeSection;
-    window.dropSection = dropSection;
 
-    window.onload = () => {
-      updateTimerDisplay();
-      renderSectionList();
-    };
+    renderSections();
+    updateDisplay();
   </script>
 </body>
 </html>
