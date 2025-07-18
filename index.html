@@ -79,6 +79,16 @@
     margin: 0.25rem 0;
     user-select: none;
   }
+  .controls {
+    margin-top: 1rem;
+  }
+  button {
+    margin: 0 0.5rem;
+    padding: 0.5rem 1rem;
+    font-size: 1rem;
+    cursor: pointer;
+    user-select: none;
+  }
 </style>
 </head>
 <body>
@@ -91,6 +101,11 @@
 <div id="remaining-time">Remaining Schedule Time: --:--</div>
 <div id="total-time">Total Schedule Time: --:--</div>
 <div id="predicted-end">Predicted End: --:--</div>
+
+<div class="controls">
+  <button onclick="startTimer()">Start</button>
+  <button onclick="pauseTimer()">Pause</button>
+</div>
 
 <script>
   const firebaseConfig = {
@@ -110,6 +125,7 @@
   let currentSection = 0;
   let timeLeft = 0;
   let isRunning = false;
+  let timerInterval = null;
 
   function format(seconds) {
     const m = Math.floor(Math.abs(seconds) / 60);
@@ -132,6 +148,7 @@
     updateProgressBar();
     updateRemainingTime();
     updateTotalAndEnd();
+    updateTitle();
   }
 
   function updateProgressBar() {
@@ -175,6 +192,43 @@
     predictedEndEl.textContent = "Predicted End: " + predictedEnd.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
   }
 
+  function updateTitle() {
+    document.getElementById("section-title").textContent = sections[currentSection]?.name || "Church Schedule Timer";
+  }
+
+  function startTimer() {
+    if (isRunning) return;
+    if (timeLeft <= 0 && sections[currentSection]) {
+      timeLeft = sections[currentSection].duration;
+    }
+    isRunning = true;
+    clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      timeLeft--;
+      updateDisplay();
+      if (timeLeft < -600) { // stop after 10 min overrun
+        pauseTimer();
+      }
+      saveState();
+    }, 1000);
+    saveState();
+  }
+
+  function pauseTimer() {
+    isRunning = false;
+    clearInterval(timerInterval);
+    saveState();
+  }
+
+  function saveState() {
+    database.ref('timerState').set({
+      sections,
+      currentSection,
+      timeLeft,
+      isRunning,
+    });
+  }
+
   function loadState() {
     database.ref('timerState').on('value', (snapshot) => {
       const data = snapshot.val();
@@ -184,7 +238,11 @@
       timeLeft = data.timeLeft ?? 0;
       isRunning = data.isRunning || false;
       updateDisplay();
-      document.getElementById("section-title").textContent = sections[currentSection]?.name || "Church Schedule Timer";
+      if (isRunning) {
+        startTimer();
+      } else {
+        pauseTimer();
+      }
     });
   }
 
