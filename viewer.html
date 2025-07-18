@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Viewer</title>
+  <style>
+    body {
+      background-color: #111;
+      color: white;
+      font-family: sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      font-size: 5rem;
+    }
+  </style>
+</head>
+<body>
+  <div id="timer">Loading...</div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      // your config
+    };
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const params = new URLSearchParams(location.search);
+    const instanceId = params.get('instance') || 'default';
+
+    const docRef = doc(db, 'instances', instanceId);
+    const timerEl = document.getElementById('timer');
+
+    onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        timerEl.textContent = data.displayText || '00:00';
+      } else {
+        timerEl.textContent = 'Not Found';
+      }
+    });
+  </script>
+</body>
+</html>
