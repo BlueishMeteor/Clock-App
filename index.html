@@ -3,14 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Church Clock App with Offline & Sync Handling</title>
+<title>Church Clock App</title>
 
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <style>
-  /* (Keep your existing styles here unchanged) */
   html, body {
     margin: 0; padding: 0; height: 100%;
     background-color: #000;
@@ -164,25 +163,11 @@
     padding: 0.3rem 0.6rem;
     cursor: pointer;
   }
-  #connection-status {
-    position: fixed;
-    top: 0;
-    right: 0;
-    background: #ef4444;
-    color: white;
-    padding: 0.2rem 0.5rem;
-    font-size: 0.9rem;
-    user-select: none;
-    display: none;
-    z-index: 20;
-  }
 </style>
 </head>
 <body>
 
 <h1>Church Clock App</h1>
-
-<div id="connection-status">Offline - Changes will sync when reconnected</div>
 
 <div id="timer">--:--</div>
 <div id="progress-bar-container"><div id="progress-bar"></div></div>
@@ -207,7 +192,7 @@
       <input type="text" id="section-name" placeholder="Section name" />
       <input type="number" id="minutes" placeholder="Min" min="0" style="width: 60px; margin-left: 0.5rem" />
       <input type="number" id="seconds" placeholder="Sec" min="0" max="59" style="width: 60px; margin-left: 0.5rem" />
-      <button onclick="addSection()">Add</button>
+      <button onclick="addSection()" style="margin-left: 0.5rem">Add</button>
     </div>
     <div id="section-list" ondragover="event.preventDefault()" ondrop="dropSection(event)"></div>
   </div>
@@ -228,29 +213,26 @@
   firebase.initializeApp(firebaseConfig);
   const database = firebase.database();
 
-  // App state variables
   let sections = [];
   let currentSection = 0;
-  let isRunning = false;
   let timeLeft = 0;
-  let timerStartTimestamp = null;  // timestamp when current run started
-  let pauseElapsed = 0;            // seconds elapsed before paused
+  let isRunning = false;
+  let pauseElapsed = 0; // seconds paused so far in current section
+  let timerStartTimestamp = null; // ms timestamp when timer was started or resumed
+  let lastUpdateTimestamp = 0; // for ignoring stale Firebase updates
+  let timerRequestId = null;
 
-  // Offline change buffer
-  let offlineChanges = null;
-  let isConnected = false;
-
-  // Format seconds to mm:ss
+  // Format seconds to m:ss
   function format(seconds) {
     const m = Math.floor(Math.abs(seconds) / 60);
     const s = Math.abs(seconds) % 60;
     return `${m}:${s.toString().padStart(2, "0")}`;
   }
 
-  // Update UI display
   function updateDisplay() {
     const timerEl = document.getElementById("timer");
     const overrunEl = document.getElementById("overrun");
+
     if (timeLeft >= 0) {
       timerEl.textContent = format(timeLeft);
       timerEl.style.color = "#22c55e";
@@ -260,6 +242,7 @@
       timerEl.style.color = "#ef4444";
       overrunEl.textContent = `Overrun: ${format(timeLeft)}`;
     }
+
     updateProgressBar();
     updateRemainingTime();
     updateTotalAndEnd();
@@ -293,7 +276,7 @@
   function updateRemainingTime() {
     const remainingTimeEl = document.getElementById("remaining-time");
     let remainingSeconds = timeLeft;
-    for(let i = currentSection + 1; i < sections.length; i++) {
+    for (let i = currentSection + 1; i < sections.length; i++) {
       remainingSeconds += sections[i].duration;
     }
     remainingTimeEl.textContent = "Remaining Schedule Time: " + format(remainingSeconds);
@@ -308,32 +291,11 @@
 
     const now = new Date();
     const predictedEnd = new Date(now.getTime() + totalSeconds * 1000);
-    predictedEndEl.textContent = "Predicted End: " + predictedEnd.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    predictedEndEl.textContent = "Predicted End: " + predictedEnd.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
-  // Calculate timeLeft from timestamps, called on each tick & pause
-  function updateTimeLeftFromTimestamps() {
-    if (!isRunning) return;
-    const now = Date.now();
-    const elapsedMs = now - timerStartTimestamp;
-    timeLeft = Math.round(sections[currentSection].duration - pauseElapsed - elapsedMs / 1000);
-  }
-
-  // Save state to Firebase, include server timestamp for conflict detection
+  // Save state to Firebase with server timestamp
   function saveState() {
-    if (!isConnected) {
-      // Buffer changes locally while offline
-      offlineChanges = {
-        sections,
-        currentSection,
-        timeLeft,
-        isRunning,
-        pauseElapsed,
-        timerStartTimestamp
-      };
-      return;
-    }
-
     const newState = {
       sections,
       currentSection,
@@ -341,87 +303,80 @@
       isRunning,
       pauseElapsed,
       timerStartTimestamp,
-      lastUpdated: firebase.database.ServerValue.TIMESTAMP
+      lastUpdated: firebase.database.ServerValue.TIMESTAMP,
     };
 
     database.ref('timerState').set(newState).catch(e => {
       console.error("Failed to save state:", e);
-      // Buffer changes if error occurs
-      offlineChanges = newState;
     });
   }
 
-  // Load state from Firebase
-  function loadState() {
-    database.ref('timerState').on('value', (snapshot) => {
-      const data = snapshot.val();
-      if (!data) return;
+  // Handle Firebase data changes
+  function onFirebaseDataChange(snapshot) {
+    const data = snapshot.val();
+    if (!data) return;
 
-      // Only update if new data is newer than what we have
-      if (data.lastUpdated && lastUpdateTimestamp && data.lastUpdated <= lastUpdateTimestamp) {
-        // Older or equal data, ignore to prevent overwriting newer local changes
-        return;
-      }
-      lastUpdateTimestamp = data.lastUpdated || 0;
-
-      sections = data.sections || [];
-      currentSection = data.currentSection ?? 0;
-      timeLeft = data.timeLeft ?? 0;
-      isRunning = data.isRunning || false;
-      pauseElapsed = data.pauseElapsed || 0;
-      timerStartTimestamp = data.timerStartTimestamp || null;
-
-      renderSections();
-      updateDisplay();
-      updateTitle();
-
-      if (isRunning) {
-        startTimer(false);
-      } else {
-        pauseTimer(false);
-      }
-    });
-  }
-
-  // Track connection state using Firebase's .info/connected
-  database.ref(".info/connected").on("value", (snap) => {
-    if (snap.val() === true) {
-      isConnected = true;
-      document.getElementById("connection-status").style.display = "none";
-
-      // If we have buffered offline changes, push them now
-      if (offlineChanges) {
-        database.ref('timerState').set(offlineChanges).then(() => {
-          offlineChanges = null;
-        }).catch(e => {
-          console.error("Failed to sync buffered changes:", e);
-        });
-      }
-    } else {
-      isConnected = false;
-      document.getElementById("connection-status").style.display = "block";
+    if (data.lastUpdated && data.lastUpdated <= lastUpdateTimestamp) {
+      // Ignore stale data
+      //console.log("Ignoring stale Firebase data");
+      return;
     }
-  });
 
-  // Timer tick with requestAnimationFrame
-  let timerRequestId = null;
-  function tick() {
-    if (!isRunning) return;
-    updateTimeLeftFromTimestamps();
+    lastUpdateTimestamp = data.lastUpdated || 0;
+
+    // Update local state from Firebase
+    sections = data.sections || [];
+    currentSection = data.currentSection ?? 0;
+    timeLeft = data.timeLeft ?? 0;
+    isRunning = data.isRunning || false;
+    pauseElapsed = data.pauseElapsed || 0;
+    timerStartTimestamp = data.timerStartTimestamp || null;
+
+    renderSections();
     updateDisplay();
-    if (timeLeft < -600) {
-      pauseTimer();
+    updateTitle();
+
+    if (isRunning) {
+      startTimer(false);
     } else {
-      timerRequestId = requestAnimationFrame(tick);
+      pauseTimer(false);
     }
+  }
+
+  // Load state from Firebase and attach listener
+  function loadState() {
+    database.ref('timerState').on('value', onFirebaseDataChange);
+  }
+
+  // Timer tick function using requestAnimationFrame
+  function tick() {
+    if (!isRunning || !sections[currentSection]) return;
+
+    const now = Date.now();
+    const elapsedMs = now - timerStartTimestamp;
+    timeLeft = Math.round(sections[currentSection].duration - pauseElapsed - elapsedMs / 1000);
+
+    updateDisplay();
+
+    if (timeLeft < -600) { // 10 minutes overrun limit
+      pauseTimer();
+      return;
+    }
+
+    timerRequestId = requestAnimationFrame(tick);
+
+    // Optionally throttle saves here if needed, currently saves every tick
     saveState();
   }
 
+  // Timer control functions
   function startTimer(save = true) {
     if (!sections[currentSection] || isRunning) return;
+
     if (timeLeft <= 0) {
       timeLeft = sections[currentSection].duration;
     }
+
     timerStartTimestamp = Date.now();
     isRunning = true;
     pauseElapsed = 0;
@@ -434,14 +389,19 @@
 
   function pauseTimer(save = true) {
     if (!isRunning) return;
-    updateTimeLeftFromTimestamps();
+
+    const now = Date.now();
+    const elapsedMs = now - timerStartTimestamp;
+    timeLeft = Math.round(sections[currentSection].duration - pauseElapsed - elapsedMs / 1000);
     isRunning = false;
     pauseElapsed = sections[currentSection].duration - timeLeft;
     timerStartTimestamp = null;
+
     if (timerRequestId) {
       cancelAnimationFrame(timerRequestId);
       timerRequestId = null;
     }
+
     updateDisplay();
     if (save) saveState();
   }
@@ -450,6 +410,7 @@
     pauseTimer(false);
     pauseElapsed = 0;
     timerStartTimestamp = null;
+
     if (sections[currentSection]) {
       timeLeft = sections[currentSection].duration;
     } else {
@@ -457,23 +418,27 @@
     }
     updateDisplay();
     updateTitle();
+
     if (save) saveState();
   }
 
+  // Section navigation
   function nextSection() {
     if (currentSection < sections.length - 1) {
       currentSection++;
       pauseElapsed = 0;
-      timerStartTimestamp = isRunning ? Date.now() : null;
+      timerStartTimestamp = null;
       timeLeft = sections[currentSection].duration;
-      updateTitle();
+
       renderSections();
+      updateTitle();
       updateDisplay();
+
       if (isRunning) {
-        if (timerRequestId) cancelAnimationFrame(timerRequestId);
-        timerRequestId = requestAnimationFrame(tick);
+        startTimer();
+      } else {
+        saveState();
       }
-      saveState();
     }
   }
 
@@ -481,26 +446,30 @@
     if (currentSection > 0) {
       currentSection--;
       pauseElapsed = 0;
-      timerStartTimestamp = isRunning ? Date.now() : null;
+      timerStartTimestamp = null;
       timeLeft = sections[currentSection].duration;
-      updateTitle();
+
       renderSections();
+      updateTitle();
       updateDisplay();
+
       if (isRunning) {
-        if (timerRequestId) cancelAnimationFrame(timerRequestId);
-        timerRequestId = requestAnimationFrame(tick);
+        startTimer();
+      } else {
+        saveState();
       }
-      saveState();
     }
   }
 
+  // Section list UI management
   function addSection() {
-    if (isRunning) return; // prevent edits while running
+    if (isRunning) return; // prevent changes while running
     const name = document.getElementById("section-name").value.trim();
     const minutes = parseInt(document.getElementById("minutes").value) || 0;
     const seconds = parseInt(document.getElementById("seconds").value) || 0;
     const duration = minutes * 60 + seconds;
     if (!name || duration <= 0) return;
+
     sections.push({ name, duration });
     renderSections();
     updateTitle();
@@ -511,19 +480,19 @@
   }
 
   function removeSection(index) {
-    if (isRunning) return;
+    if (isRunning) return; // prevent changes while running
     sections.splice(index, 1);
+
     if (currentSection === index) {
       currentSection = 0;
-      pauseElapsed = 0;
-      timerStartTimestamp = null;
-      timeLeft = sections[0]?.duration || 0;
+      timeLeft = sections[0] ? sections[0].duration : 0;
+      updateDisplay();
     } else if (currentSection > index) {
       currentSection--;
     }
+
     renderSections();
     updateTitle();
-    updateDisplay();
     saveState();
   }
 
@@ -574,7 +543,7 @@
     menu.style.display = menu.style.display === "block" ? "none" : "block";
   }
 
-  // Initialize default sections if none loaded after timeout
+  // Initialize with default sections if none saved
   function init() {
     if (sections.length === 0) {
       sections = [
@@ -591,12 +560,10 @@
     updateTitle();
   }
 
-  let lastUpdateTimestamp = 0;
-
   window.onload = () => {
     loadState();
 
-    // If no data loads after 2 seconds, init defaults
+    // If no data loads after 2 seconds, init default
     setTimeout(() => {
       if (sections.length === 0) {
         init();
@@ -604,5 +571,6 @@
     }, 2000);
   };
 </script>
+
 </body>
 </html>
