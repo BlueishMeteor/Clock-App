@@ -98,7 +98,7 @@
 <div id="predicted-end">Predicted End: --:--</div>
 
 <script>
-  // Your Firebase config (copy from your index)
+  // Your Firebase config
   const firebaseConfig = {
     apiKey: "AIzaSyD056thmGLxTwVOU01Qy_KNIqS4aqdW8Bw",
     authDomain: "clockapp-26b10.firebaseapp.com",
@@ -162,11 +162,6 @@
       remainingTimeEl.textContent = "Remaining Schedule Time: --:--";
       totalTimeEl.textContent = "Total Schedule Time: --:--";
       predictedEndEl.textContent = "Predicted End: --:--";
-      return;
-    }
-
-    if (data.secretKey !== 'PickAllPokemons98') {
-      sectionTitleEl.textContent = "Unauthorized Data";
       return;
     }
 
