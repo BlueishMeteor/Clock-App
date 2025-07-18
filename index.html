@@ -291,7 +291,6 @@
 
   function saveState() {
     database.ref('timerState').set({
-      secretKey: 'PickAllPokemons98',
       sections,
       currentSection,
       timeLeft,
@@ -303,9 +302,6 @@
     database.ref('timerState').on('value', (snapshot) => {
       const data = snapshot.val();
       if (!data) return;
-      if (data.secretKey !== 'PickAllPokemons98') {
-        console.warn("Invalid secret key in data; ignoring update.");
-        return;
       }
       sections = data.sections || [];
       currentSection = data.currentSection ?? 0;
