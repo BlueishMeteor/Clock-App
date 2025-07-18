@@ -215,10 +215,19 @@
 
   let sections = [];
   let currentSection = 0;
-  let timer = null;
-  let timeLeft = 0;
+
+  // Timer state
   let isRunning = false;
-  let dragStartIndex = null;
+  let timerRequestId = null;
+
+  // Timestamp-based timer variables
+  // timerStartTimestamp = when current section timer started, in ms
+  // pauseElapsed = seconds elapsed before pause
+  let timerStartTimestamp = null;
+  let pauseElapsed = 0;
+
+  // Compute timeLeft dynamically (seconds)
+  let timeLeft = 0;
 
   function format(seconds) {
     const m = Math.floor(Math.abs(seconds) / 60);
@@ -229,6 +238,7 @@
   function updateDisplay() {
     const timerEl = document.getElementById("timer");
     const overrunEl = document.getElementById("overrun");
+
     if (timeLeft >= 0) {
       timerEl.textContent = format(timeLeft);
       timerEl.style.color = "#22c55e";
@@ -284,17 +294,27 @@
     let totalSeconds = sections.reduce((acc, s) => acc + s.duration, 0);
     totalTimeEl.textContent = "Total Schedule Time: " + format(totalSeconds);
 
-    const now = new Date();
-    const predictedEnd = new Date(now.getTime() + totalSeconds * 1000);
-    predictedEndEl.textContent = "Predicted End: " + predictedEnd.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    if (isRunning && timerStartTimestamp !== null) {
+      const elapsedSeconds = (Date.now() - timerStartTimestamp) / 1000 + pauseElapsed;
+      const remainingInCurrent = sections[currentSection].duration - elapsedSeconds;
+      let remainingTotal = remainingInCurrent;
+      for(let i = currentSection + 1; i < sections.length; i++) {
+        remainingTotal += sections[i].duration;
+      }
+      const predictedEnd = new Date(Date.now() + remainingTotal * 1000);
+      predictedEndEl.textContent = "Predicted End: " + predictedEnd.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    } else {
+      predictedEndEl.textContent = "Predicted End: --:--";
+    }
   }
 
   function saveState() {
     database.ref('timerState').set({
       sections,
       currentSection,
-      timeLeft,
       isRunning,
+      timerStartTimestamp,
+      pauseElapsed
     });
   }
 
@@ -302,49 +322,88 @@
     database.ref('timerState').on('value', (snapshot) => {
       const data = snapshot.val();
       if (!data) return;
-      }
+
       sections = data.sections || [];
       currentSection = data.currentSection ?? 0;
-      timeLeft = data.timeLeft ?? 0;
       isRunning = data.isRunning || false;
+      timerStartTimestamp = data.timerStartTimestamp ?? null;
+      pauseElapsed = data.pauseElapsed ?? 0;
 
-      renderSections();
-      updateDisplay();
-      updateTitle();
-
-      if (isRunning) {
-        startTimer(false);
+      if (!sections.length) {
+        init();
       } else {
-        pauseTimer(false);
+        updateTimeLeftFromTimestamps();
+        renderSections();
+        updateDisplay();
+        updateTitle();
+        if (isRunning) startTimer(false);
+        else pauseTimer(false);
       }
     });
   }
 
-  function startTimer(save = true) {
-    if (!sections[currentSection] || isRunning) return;
-    if (timeLeft <= 0) {
-      timeLeft = sections[currentSection].duration;
-      updateDisplay();
+  function updateTimeLeftFromTimestamps() {
+    if (!sections.length) {
+      timeLeft = 0;
+      return;
     }
+    if (isRunning && timerStartTimestamp !== null) {
+      const elapsedSeconds = (Date.now() - timerStartTimestamp) / 1000 + pauseElapsed;
+      timeLeft = Math.round(sections[currentSection].duration - elapsedSeconds);
+    } else {
+      // paused or stopped: timeLeft is duration - pauseElapsed
+      timeLeft = Math.round(sections[currentSection].duration - pauseElapsed);
+    }
+  }
+
+  function tick() {
+    updateTimeLeftFromTimestamps();
+    updateDisplay();
+
+    if (timeLeft < -600) {
+      pauseTimer();
+      return;
+    }
+    timerRequestId = requestAnimationFrame(tick);
+  }
+
+  function startTimer(save = true) {
+    if (!sections.length) return;
+    if (isRunning) return;
+
+    if (timeLeft <= 0) {
+      pauseElapsed = 0;
+      timerStartTimestamp = Date.now();
+      timeLeft = sections[currentSection].duration;
+    } else if (timerStartTimestamp === null) {
+      timerStartTimestamp = Date.now() - pauseElapsed * 1000;
+    }
+
     isRunning = true;
-    clearInterval(timer);
-    timer = setInterval(() => {
-      timeLeft--;
-      updateDisplay();
-      if (save) saveState();
-      if (timeLeft < -600) pauseTimer(save); // auto pause after 10 min overrun
-    }, 1000);
+    if (timerRequestId) cancelAnimationFrame(timerRequestId);
+    timerRequestId = requestAnimationFrame(tick);
+
     if (save) saveState();
   }
 
   function pauseTimer(save = true) {
+    if (!isRunning) return;
+    updateTimeLeftFromTimestamps();
     isRunning = false;
-    clearInterval(timer);
+    pauseElapsed = sections[currentSection].duration - timeLeft;
+    timerStartTimestamp = null;
+    if (timerRequestId) {
+      cancelAnimationFrame(timerRequestId);
+      timerRequestId = null;
+    }
+    updateDisplay();
     if (save) saveState();
   }
 
   function resetTimer(save = true) {
-    pauseTimer(save);
+    pauseTimer(false);
+    pauseElapsed = 0;
+    timerStartTimestamp = null;
     if (sections[currentSection]) {
       timeLeft = sections[currentSection].duration;
     } else {
@@ -355,25 +414,19 @@
     if (save) saveState();
   }
 
-  // Keep timer running continuously when switching sections
   function nextSection() {
     if (currentSection < sections.length - 1) {
       currentSection++;
+      pauseElapsed = 0;
+      timerStartTimestamp = isRunning ? Date.now() : null;
       timeLeft = sections[currentSection].duration;
       updateTitle();
       renderSections();
       updateDisplay();
-
       if (isRunning) {
-        clearInterval(timer);
-        timer = setInterval(() => {
-          timeLeft--;
-          updateDisplay();
-          saveState();
-          if (timeLeft < -600) pauseTimer();
-        }, 1000);
+        if (timerRequestId) cancelAnimationFrame(timerRequestId);
+        timerRequestId = requestAnimationFrame(tick);
       }
-
       saveState();
     }
   }
@@ -381,21 +434,16 @@
   function previousSection() {
     if (currentSection > 0) {
       currentSection--;
+      pauseElapsed = 0;
+      timerStartTimestamp = isRunning ? Date.now() : null;
       timeLeft = sections[currentSection].duration;
       updateTitle();
       renderSections();
       updateDisplay();
-
       if (isRunning) {
-        clearInterval(timer);
-        timer = setInterval(() => {
-          timeLeft--;
-          updateDisplay();
-          saveState();
-          if (timeLeft < -600) pauseTimer();
-        }, 1000);
+        if (timerRequestId) cancelAnimationFrame(timerRequestId);
+        timerRequestId = requestAnimationFrame(tick);
       }
-
       saveState();
     }
   }
@@ -406,6 +454,7 @@
     const seconds = parseInt(document.getElementById("seconds").value) || 0;
     const duration = minutes * 60 + seconds;
     if (!name || duration <= 0) return;
+    if (isRunning) return; // prevent edits while running
     sections.push({ name, duration });
     renderSections();
     updateTitle();
@@ -420,13 +469,15 @@
     sections.splice(index, 1);
     if (currentSection === index) {
       currentSection = 0;
-      timeLeft = 0;
-      updateDisplay();
+      pauseElapsed = 0;
+      timerStartTimestamp = null;
+      timeLeft = sections[0]?.duration || 0;
     } else if (currentSection > index) {
       currentSection--;
     }
     renderSections();
     updateTitle();
+    updateDisplay();
     saveState();
   }
 
@@ -449,6 +500,7 @@
     updateTitle();
   }
 
+  let dragStartIndex = null;
   function dragStart(e) {
     dragStartIndex = +e.target.getAttribute("data-index");
   }
@@ -457,11 +509,20 @@
     const dropTarget = e.target.closest(".section-item");
     if (!dropTarget) return;
     const dropIndex = +dropTarget.getAttribute("data-index");
+    if (dragStartIndex === null) return;
+    if (dragStartIndex === dropIndex) return;
+
     const item = sections.splice(dragStartIndex, 1)[0];
     sections.splice(dropIndex, 0, item);
-    if (currentSection === dragStartIndex) currentSection = dropIndex;
-    else if (currentSection > dragStartIndex && currentSection <= dropIndex) currentSection--;
-    else if (currentSection < dragStartIndex && currentSection >= dropIndex) currentSection++;
+
+    // Adjust currentSection index accordingly
+    if (currentSection === dragStartIndex) {
+      currentSection = dropIndex;
+    } else if (currentSection > dragStartIndex && currentSection <= dropIndex) {
+      currentSection--;
+    } else if (currentSection < dragStartIndex && currentSection >= dropIndex) {
+      currentSection++;
+    }
     renderSections();
     saveState();
   }
@@ -471,31 +532,33 @@
     menu.style.display = menu.style.display === "block" ? "none" : "block";
   }
 
-  // Initialize with default sections if none saved
   function init() {
-    if (sections.length === 0) {
-      sections = [
-        { name: "Song 1", duration: 180 },
-        { name: "Song 2", duration: 240 },
-        { name: "Song 3", duration: 300 }
-      ];
-      currentSection = 0;
-      timeLeft = sections[0].duration;
-      saveState();
-    }
+    sections = [
+      { name: "Song 1", duration: 180 },
+      { name: "Song 2", duration: 240 },
+      { name: "Song 3", duration: 300 }
+    ];
+    currentSection = 0;
+    pauseElapsed = 0;
+    timerStartTimestamp = null;
+    timeLeft = sections[0].duration;
+    isRunning = false;
     renderSections();
     updateDisplay();
     updateTitle();
+    saveState();
   }
 
   window.onload = () => {
     loadState();
+    // If no sections after 2 seconds, initialize defaults
     setTimeout(() => {
-      if (sections.length === 0) {
+      if (!sections.length) {
         init();
       }
     }, 2000);
   };
 </script>
+
 </body>
 </html>
