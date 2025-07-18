@@ -46,7 +46,8 @@
     line-height: 1;
   }
   #progress-bar-container {
-    width: 10%;
+    width: 80%;
+    max-width: 400px;
     height: 8px;
     background: #333;
     border-radius: 10px;
@@ -67,144 +68,36 @@
     user-select: none;
   }
   #section-title {
-    font-size: 2.5rem;
+    font-size: 2rem;
     opacity: 0.8;
-    margin: 0 0 0.5rem 0;
+    margin: 0.5rem 0;
     user-select: none;
   }
   #remaining-time, #total-time, #predicted-end {
-    font-size: 1.2rem;
+    font-size: 1.1rem;
     opacity: 0.6;
-    margin: 0 0 0.25rem 0;
+    margin: 0.25rem 0;
     user-select: none;
-  }
-  .bottom-container {
-    position: fixed;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 100%;
-    max-width: 600px;
-    background: #111;
-    border-top: 2px solid #22c55e;
-    padding: 1rem 1rem 2rem 1rem;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1rem;
-    z-index: 10;
-  }
-  .controls {
-    display: flex;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    width: 100%;
-  }
-  button {
-    padding: 0.5rem 1rem;
-    font-size: 1rem;
-    cursor: pointer;
-    min-width: 80px;
-    user-select: none;
-  }
-  .menu-toggle {
-    background: #444;
-    color: #fff;
-    border: none;
-    padding: 0.5rem 1rem;
-    font-size: 1rem;
-    cursor: pointer;
-    width: 100%;
-    max-width: 600px;
-    text-align: center;
-    user-select: none;
-  }
-  #menu-section {
-    display: none;
-    width: 100%;
-    max-width: 600px;
-    background: #222;
-    padding: 1rem;
-    border-radius: 8px;
-    box-sizing: border-box;
-    user-select: none;
-    max-height: 200px;
-    overflow-y: auto;
-  }
-  #menu-section .controls {
-    justify-content: flex-start;
-    gap: 0.5rem;
-    flex-wrap: nowrap;
-    margin-bottom: 1rem;
-  }
-  #section-list {
-    max-height: 120px;
-    overflow-y: auto;
-  }
-  .section-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: #111;
-    margin-bottom: 0.5rem;
-    padding: 0.5rem;
-    border-radius: 5px;
-    cursor: move;
-  }
-  .section-item.active {
-    border: 2px solid #22c55e;
-  }
-  .remove-btn {
-    background: #ef4444;
-    color: white;
-    border: none;
-    padding: 0.3rem 0.6rem;
-    cursor: pointer;
   }
 </style>
 </head>
 <body>
 
 <h1>Church Clock App</h1>
-
 <div id="timer">--:--</div>
 <div id="progress-bar-container"><div id="progress-bar"></div></div>
 <div id="overrun"></div>
 <h2 id="section-title">Church Schedule Timer</h2>
-
 <div id="remaining-time">Remaining Schedule Time: --:--</div>
 <div id="total-time">Total Schedule Time: --:--</div>
 <div id="predicted-end">Predicted End: --:--</div>
 
-<div class="bottom-container">
-  <div class="controls">
-    <button onclick="startTimer()">Start</button>
-    <button onclick="pauseTimer()">Pause</button>
-    <button onclick="resetTimer()">Reset</button>
-    <button onclick="previousSection()">Back</button>
-    <button onclick="nextSection()">Next</button>
-  </div>
-  <button class="menu-toggle" onclick="toggleMenu()">Toggle Schedule Menu</button>
-  <div id="menu-section">
-    <div class="controls" style="flex-wrap: nowrap; justify-content: flex-start;">
-      <input type="text" id="section-name" placeholder="Section name" />
-      <input type="number" id="minutes" placeholder="Min" min="0" style="width: 60px; margin-left: 0.5rem" />
-      <input type="number" id="seconds" placeholder="Sec" min="0" max="59" style="width: 60px; margin-left: 0.5rem" />
-      <button onclick="addSection()" style="margin-left: 0.5rem">Add</button>
-    </div>
-    <div id="section-list" ondragover="event.preventDefault()" ondrop="dropSection(event)"></div>
-  </div>
-</div>
-
 <script>
-  // Firebase config
   const firebaseConfig = {
     apiKey: "AIzaSyD056thmGLxTwVOU01Qy_KNIqS4aqdW8Bw",
     authDomain: "clockapp-26b10.firebaseapp.com",
     projectId: "clockapp-26b10",
-    storageBucket: "clockapp-26b10.firebasestorage.app",
+    storageBucket: "clockapp-26b10.appspot.com",
     messagingSenderId: "381529267609",
     appId: "1:381529267609:web:3b6565b1b60c2c72acc708",
     measurementId: "G-SX7DKY8WPQ"
@@ -215,10 +108,8 @@
 
   let sections = [];
   let currentSection = 0;
-  let timer = null;
   let timeLeft = 0;
   let isRunning = false;
-  let dragStartIndex = null;
 
   function format(seconds) {
     const m = Math.floor(Math.abs(seconds) / 60);
@@ -259,15 +150,6 @@
     }
   }
 
-  function updateTitle() {
-    const titleEl = document.getElementById("section-title");
-    if (sections[currentSection]) {
-      titleEl.textContent = sections[currentSection].name;
-    } else {
-      titleEl.textContent = "Church Schedule Timer";
-    }
-  }
-
   function updateRemainingTime() {
     const remainingTimeEl = document.getElementById("remaining-time");
     let remainingSeconds = timeLeft;
@@ -285,202 +167,30 @@
     totalTimeEl.textContent = "Total Schedule Time: " + format(totalSeconds);
 
     const now = new Date();
-    const predictedEnd = new Date(now.getTime() + totalSeconds * 1000);
+    let futureSeconds = timeLeft;
+    for(let i = currentSection + 1; i < sections.length; i++) {
+      futureSeconds += sections[i].duration;
+    }
+    const predictedEnd = new Date(now.getTime() + futureSeconds * 1000);
     predictedEndEl.textContent = "Predicted End: " + predictedEnd.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-  }
-
-  function saveState() {
-    database.ref('timerState').set({
-      secretKey: 'PickAllPokemons98',
-      sections,
-      currentSection,
-      timeLeft,
-      isRunning,
-    });
   }
 
   function loadState() {
     database.ref('timerState').on('value', (snapshot) => {
       const data = snapshot.val();
       if (!data) return;
-      if (data.secretKey !== 'PickAllPokemons98') {
-        console.warn("Invalid secret key in data; ignoring update.");
-        return;
-      }
       sections = data.sections || [];
       currentSection = data.currentSection ?? 0;
       timeLeft = data.timeLeft ?? 0;
       isRunning = data.isRunning || false;
-
-      renderSections();
       updateDisplay();
-      updateTitle();
-
-      if (isRunning) {
-        startTimer(false);
-      } else {
-        pauseTimer(false);
-      }
+      document.getElementById("section-title").textContent = sections[currentSection]?.name || "Church Schedule Timer";
     });
-  }
-
-  function startTimer(save = true) {
-    if (!sections[currentSection] || isRunning) return;
-    if (timeLeft <= 0) {
-      timeLeft = sections[currentSection].duration;
-      updateDisplay();
-    }
-    isRunning = true;
-    clearInterval(timer);
-    timer = setInterval(() => {
-      timeLeft--;
-      updateDisplay();
-      if (save) saveState();
-      if (timeLeft < -600) pauseTimer(save); // auto pause after 10 min overrun
-    }, 1000);
-    if (save) saveState();
-  }
-
-  function pauseTimer(save = true) {
-    isRunning = false;
-    clearInterval(timer);
-    if (save) saveState();
-  }
-
-  function resetTimer(save = true) {
-    pauseTimer(save);
-    if (sections[currentSection]) {
-      timeLeft = sections[currentSection].duration;
-    } else {
-      timeLeft = 0;
-    }
-    updateDisplay();
-    updateTitle();
-    if (save) saveState();
-  }
-
-  function nextSection() {
-    if (currentSection < sections.length - 1) {
-      currentSection++;
-      resetTimer(false);
-      updateTitle();
-      renderSections();
-      if (isRunning) startTimer();
-      else updateDisplay();
-      saveState();
-    }
-  }
-
-  function previousSection() {
-    if (currentSection > 0) {
-      currentSection--;
-      resetTimer(false);
-      updateTitle();
-      renderSections();
-      if (isRunning) startTimer();
-      else updateDisplay();
-      saveState();
-    }
-  }
-
-  function addSection() {
-    const name = document.getElementById("section-name").value.trim();
-    const minutes = parseInt(document.getElementById("minutes").value) || 0;
-    const seconds = parseInt(document.getElementById("seconds").value) || 0;
-    const duration = minutes * 60 + seconds;
-    if (!name || duration <= 0) return;
-    sections.push({ name, duration });
-    renderSections();
-    updateTitle();
-    document.getElementById("section-name").value = "";
-    document.getElementById("minutes").value = "";
-    document.getElementById("seconds").value = "";
-    saveState();
-  }
-
-  function removeSection(index) {
-    if (isRunning) return;
-    sections.splice(index, 1);
-    if (currentSection === index) {
-      currentSection = 0;
-      timeLeft = 0;
-      updateDisplay();
-    } else if (currentSection > index) {
-      currentSection--;
-    }
-    renderSections();
-    updateTitle();
-    saveState();
-  }
-
-  function renderSections() {
-    const list = document.getElementById("section-list");
-    list.innerHTML = "";
-    sections.forEach((s, i) => {
-      const div = document.createElement("div");
-      div.className = "section-item";
-      div.setAttribute("draggable", true);
-      div.setAttribute("data-index", i);
-      div.ondragstart = dragStart;
-      if (i === currentSection) div.classList.add("active");
-      div.innerHTML = `
-        <span>${s.name} (${format(s.duration)})</span>
-        <button class="remove-btn" onclick="removeSection(${i})">X</button>
-      `;
-      list.appendChild(div);
-    });
-    updateTitle();
-  }
-
-  function dragStart(e) {
-    dragStartIndex = +e.target.getAttribute("data-index");
-  }
-
-  function dropSection(e) {
-    const dropTarget = e.target.closest(".section-item");
-    if (!dropTarget) return;
-    const dropIndex = +dropTarget.getAttribute("data-index");
-    const item = sections.splice(dragStartIndex, 1)[0];
-    sections.splice(dropIndex, 0, item);
-
-    if (currentSection === dragStartIndex) currentSection = dropIndex;
-    else if (currentSection > dragStartIndex && currentSection <= dropIndex) currentSection--;
-    else if (currentSection < dragStartIndex && currentSection >= dropIndex) currentSection++;
-
-    renderSections();
-    saveState();
-  }
-
-  function toggleMenu() {
-    const menu = document.getElementById("menu-section");
-    menu.style.display = menu.style.display === "block" ? "none" : "block";
-  }
-
-  function init() {
-    if (sections.length === 0) {
-      sections = [
-        { name: "Song 1", duration: 180 },
-        { name: "Song 2", duration: 240 },
-        { name: "Song 3", duration: 300 }
-      ];
-      currentSection = 0;
-      timeLeft = sections[0].duration;
-      saveState();
-    }
-    renderSections();
-    updateDisplay();
-    updateTitle();
   }
 
   window.onload = () => {
     loadState();
-    setTimeout(() => {
-      if (sections.length === 0) {
-        init();
-      }
-    }, 2000);
   };
 </script>
-
 </body>
 </html>
