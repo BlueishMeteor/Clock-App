@@ -98,7 +98,6 @@
 <div id="predicted-end">Predicted End: --:--</div>
 
 <script>
-  // Your Firebase config
   const firebaseConfig = {
     apiKey: "AIzaSyD056thmGLxTwVOU01Qy_KNIqS4aqdW8Bw",
     authDomain: "clockapp-26b10.firebaseapp.com",
@@ -154,6 +153,7 @@
   }
 
   function updateUI(data) {
+    console.log('Received timerState update:', data);
     if (!data) {
       timerEl.textContent = "--:--";
       sectionTitleEl.textContent = "No Timer Data";
@@ -203,5 +203,6 @@
     updateUI(snapshot.val());
   });
 </script>
+
 </body>
 </html>
