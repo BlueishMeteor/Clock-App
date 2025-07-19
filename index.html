@@ -3,11 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Church Clock App</title>
-
-<!-- Firebase SDK -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<title>Church Clock App - Local Timer</title>
 
 <style>
   html, body {
@@ -199,69 +195,40 @@
 </div>
 
 <script>
-  // Firebase config
-  const firebaseConfig = {
-    apiKey: "AIzaSyD056thmGLxTwVOU01Qy_KNIqS4aqdW8Bw",
-    authDomain: "clockapp-26b10.firebaseapp.com",
-    projectId: "clockapp-26b10",
-    storageBucket: "clockapp-26b10.firebasestorage.app",
-    messagingSenderId: "381529267609",
-    appId: "1:381529267609:web:3b6565b1b60c2c72acc708",
-    measurementId: "G-SX7DKY8WPQ"
-  };
-
-  firebase.initializeApp(firebaseConfig);
-  const database = firebase.database();
-
   let sections = [];
   let currentSection = 0;
+  let timer = null;
+  let timeLeft = 0;
   let isRunning = false;
   let dragStartIndex = null;
 
-  // These are from firebase state, but timeLeft will be calculated dynamically based on lastUpdate
-  let timeLeft = 0; 
-  let lastUpdate = 0; // timestamp ms from firebase when timeLeft was saved
-
-  // Format seconds to M:SS
+  // Format seconds as M:SS (supports negative for overrun)
   function format(seconds) {
     const m = Math.floor(Math.abs(seconds) / 60);
     const s = Math.abs(seconds) % 60;
     return `${m}:${s.toString().padStart(2, "0")}`;
   }
 
-  // Calculate dynamic timeLeft based on elapsed time and lastUpdate
-  function calcTimeLeft() {
-    if (!isRunning) return timeLeft;
-    const now = Date.now();
-    const elapsedSeconds = Math.floor((now - lastUpdate) / 1000);
-    const updatedTimeLeft = timeLeft - elapsedSeconds;
-    return updatedTimeLeft;
-  }
-
   function updateDisplay() {
     const timerEl = document.getElementById("timer");
     const overrunEl = document.getElementById("overrun");
-
-    const currentTimeLeft = calcTimeLeft();
-
-    if (currentTimeLeft >= 0) {
-      timerEl.textContent = format(currentTimeLeft);
+    if (timeLeft >= 0) {
+      timerEl.textContent = format(timeLeft);
       timerEl.style.color = "#22c55e";
       overrunEl.textContent = "";
     } else {
       timerEl.textContent = "00:00";
       timerEl.style.color = "#ef4444";
-      overrunEl.textContent = `Overrun: ${format(currentTimeLeft)}`;
+      overrunEl.textContent = `Overrun: ${format(timeLeft)}`;
     }
-
-    updateProgressBar(currentTimeLeft);
-    updateRemainingTime(currentTimeLeft);
+    updateProgressBar();
+    updateRemainingTime();
     updateTotalAndEnd();
   }
 
-  function updateProgressBar(currentTimeLeft) {
+  function updateProgressBar() {
     const total = sections[currentSection]?.duration || 1;
-    const remaining = Math.max(currentTimeLeft, 0);
+    const remaining = Math.max(timeLeft, 0);
     const percent = ((total - remaining) / total) * 100;
     const progressBar = document.getElementById("progress-bar");
     progressBar.style.width = `${percent}%`;
@@ -284,9 +251,9 @@
     }
   }
 
-  function updateRemainingTime(currentTimeLeft) {
+  function updateRemainingTime() {
     const remainingTimeEl = document.getElementById("remaining-time");
-    let remainingSeconds = currentTimeLeft;
+    let remainingSeconds = timeLeft;
     for(let i = currentSection + 1; i < sections.length; i++) {
       remainingSeconds += sections[i].duration;
     }
@@ -305,95 +272,75 @@
     predictedEndEl.textContent = "Predicted End: " + predictedEnd.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
   }
 
-  // Save the state to Firebase, including a fresh lastUpdate timestamp
   function saveState() {
-    database.ref('timerState').set({
-      secretKey: 'PickAllPokemons98',
+    const state = {
       sections,
       currentSection,
-      timeLeft: calcTimeLeft(),
+      timeLeft,
       isRunning,
-      lastUpdate: Date.now()
-    });
+    };
+    localStorage.setItem("churchClockState", JSON.stringify(state));
   }
 
-  // Load from Firebase and update local vars and UI
   function loadState() {
-    database.ref('timerState').on('value', (snapshot) => {
-      const data = snapshot.val();
-      if (!data) return;
-      if (data.secretKey !== 'PickAllPokemons98') {
-        console.warn("Invalid secret key in data; ignoring update.");
-        return;
-      }
-      sections = data.sections || [];
+    const stateStr = localStorage.getItem("churchClockState");
+    if (!stateStr) return false;
+    try {
+      const data = JSON.parse(stateStr);
+      if (!data.sections || !Array.isArray(data.sections)) return false;
+      sections = data.sections;
       currentSection = data.currentSection ?? 0;
       timeLeft = data.timeLeft ?? 0;
       isRunning = data.isRunning || false;
-      lastUpdate = data.lastUpdate || Date.now();
-
-      renderSections();
-      updateTitle();
-      updateDisplay();
-
-      if (isRunning) {
-        startTimer(false);
-      } else {
-        pauseTimer(false);
-      }
-    });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
-  // Clear and restart the periodic interval for smooth display update
-  let timerInterval = null;
-  function startTimer(save = true) {
+  function startTimer() {
     if (!sections[currentSection] || isRunning) return;
     if (timeLeft <= 0) {
       timeLeft = sections[currentSection].duration;
-      lastUpdate = Date.now();
       updateDisplay();
-      if (save) saveState();
     }
     isRunning = true;
-    clearInterval(timerInterval);
-    timerInterval = setInterval(() => {
+    clearInterval(timer);
+    timer = setInterval(() => {
+      timeLeft--;
       updateDisplay();
-      if (save) saveState();
-    }, 250); // update 4 times a second for smoothness
-    if (save) saveState();
+      saveState();
+      if (timeLeft < -600) pauseTimer(); // auto pause after 10 min overrun
+    }, 1000);
+    saveState();
   }
 
-  function pauseTimer(save = true) {
+  function pauseTimer() {
     isRunning = false;
-    clearInterval(timerInterval);
-    if (save) saveState();
+    clearInterval(timer);
+    saveState();
   }
 
-  function resetTimer(save = true) {
-    pauseTimer(save);
+  function resetTimer() {
+    pauseTimer();
     if (sections[currentSection]) {
       timeLeft = sections[currentSection].duration;
     } else {
       timeLeft = 0;
     }
-    lastUpdate = Date.now();
     updateDisplay();
     updateTitle();
-    if (save) saveState();
+    saveState();
   }
 
   function nextSection() {
     if (currentSection < sections.length - 1) {
       currentSection++;
-      timeLeft = sections[currentSection].duration;
-      lastUpdate = Date.now();
-      updateTitle();
+      // Keep timer running and continue countdown on next section
+      resetTimer();
+      if (isRunning) startTimer();
       renderSections();
-      if (isRunning) {
-        startTimer();
-      } else {
-        updateDisplay();
-      }
+      updateTitle();
       saveState();
     }
   }
@@ -401,15 +348,10 @@
   function previousSection() {
     if (currentSection > 0) {
       currentSection--;
-      timeLeft = sections[currentSection].duration;
-      lastUpdate = Date.now();
-      updateTitle();
+      resetTimer();
+      if (isRunning) startTimer();
       renderSections();
-      if (isRunning) {
-        startTimer();
-      } else {
-        updateDisplay();
-      }
+      updateTitle();
       saveState();
     }
   }
@@ -468,6 +410,7 @@
   }
 
   function dropSection(e) {
+    e.preventDefault();
     const dropTarget = e.target.closest(".section-item");
     if (!dropTarget) return;
     const dropIndex = +dropTarget.getAttribute("data-index");
@@ -485,7 +428,6 @@
     menu.style.display = menu.style.display === "block" ? "none" : "block";
   }
 
-  // Initialize with default sections if empty
   function init() {
     if (sections.length === 0) {
       sections = [
@@ -495,7 +437,6 @@
       ];
       currentSection = 0;
       timeLeft = sections[0].duration;
-      lastUpdate = Date.now();
       saveState();
     }
     renderSections();
@@ -504,13 +445,15 @@
   }
 
   window.onload = () => {
-    loadState();
-    setTimeout(() => {
-      if (sections.length === 0) {
-        init();
-      }
-    }, 2000);
+    if (!loadState()) {
+      init();
+    } else {
+      updateDisplay();
+      updateTitle();
+      if (isRunning) startTimer();
+    }
   };
 </script>
+
 </body>
 </html>
