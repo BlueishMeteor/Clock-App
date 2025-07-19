@@ -3,14 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Church Clock App - Firebase Driven</title>
+<title>Church Clock App</title>
 
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <style>
-  /* Your existing styles here (omitted for brevity, keep as you have) */
   html, body {
     margin: 0; padding: 0; height: 100%;
     background-color: #000;
@@ -216,38 +215,51 @@
 
   let sections = [];
   let currentSection = 0;
-  let timeLeft = 0;
   let isRunning = false;
+  let lastUpdate = 0; // timestamp (ms)
+  let timeLeft = 0;   // seconds at lastUpdate
+  let timerInterval = null;
   let dragStartIndex = null;
 
-  // Format seconds to mm:ss, handles negative for overrun
+  // Format seconds into mm:ss
   function format(seconds) {
     const m = Math.floor(Math.abs(seconds) / 60);
     const s = Math.abs(seconds) % 60;
     return `${m}:${s.toString().padStart(2, "0")}`;
   }
 
-  // Update UI elements
+  // Calculate current timeLeft based on lastUpdate and isRunning
+  function computeTimeLeft() {
+    if (!isRunning) return timeLeft;
+    const now = Date.now();
+    const elapsedSec = Math.floor((now - lastUpdate) / 1000);
+    return timeLeft - elapsedSec;
+  }
+
   function updateDisplay() {
     const timerEl = document.getElementById("timer");
     const overrunEl = document.getElementById("overrun");
-    if (timeLeft >= 0) {
-      timerEl.textContent = format(timeLeft);
+
+    let currentTimeLeft = computeTimeLeft();
+
+    if (currentTimeLeft >= 0) {
+      timerEl.textContent = format(currentTimeLeft);
       timerEl.style.color = "#22c55e";
       overrunEl.textContent = "";
     } else {
       timerEl.textContent = "00:00";
       timerEl.style.color = "#ef4444";
-      overrunEl.textContent = `Overrun: ${format(timeLeft)}`;
+      overrunEl.textContent = `Overrun: ${format(currentTimeLeft)}`;
     }
-    updateProgressBar();
-    updateRemainingTime();
+
+    updateProgressBar(currentTimeLeft);
+    updateRemainingTime(currentTimeLeft);
     updateTotalAndEnd();
   }
 
-  function updateProgressBar() {
+  function updateProgressBar(currentTimeLeft) {
     const total = sections[currentSection]?.duration || 1;
-    const remaining = Math.max(timeLeft, 0);
+    const remaining = Math.max(currentTimeLeft, 0);
     const percent = ((total - remaining) / total) * 100;
     const progressBar = document.getElementById("progress-bar");
     progressBar.style.width = `${percent}%`;
@@ -270,9 +282,9 @@
     }
   }
 
-  function updateRemainingTime() {
+  function updateRemainingTime(currentTimeLeft) {
     const remainingTimeEl = document.getElementById("remaining-time");
-    let remainingSeconds = timeLeft;
+    let remainingSeconds = currentTimeLeft;
     for(let i = currentSection + 1; i < sections.length; i++) {
       remainingSeconds += sections[i].duration;
     }
@@ -291,50 +303,126 @@
     predictedEndEl.textContent = "Predicted End: " + predictedEnd.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
   }
 
-  // Save entire state to Firebase
   function saveState() {
+    // Save current timeLeft as of now (to keep lastUpdate accurate)
+    const now = Date.now();
+    const currentTimeLeft = computeTimeLeft();
+
+    // If timer is running and timeLeft is below zero, stop timer automatically
+    if (isRunning && currentTimeLeft < -600) { // 10 minutes overrun max
+      isRunning = false;
+    }
+
     database.ref('timerState').set({
       secretKey: 'PickAllPokemons98',
       sections,
       currentSection,
-      timeLeft,
+      timeLeft: Math.max(currentTimeLeft, 0),
       isRunning,
+      lastUpdate: now
     });
   }
 
-  // User action handlers
+  function loadState() {
+    database.ref('timerState').on('value', (snapshot) => {
+      const data = snapshot.val();
+      if (!data) return;
+      if (data.secretKey !== 'PickAllPokemons98') {
+        console.warn("Invalid secret key in data; ignoring update.");
+        return;
+      }
+
+      sections = data.sections || [];
+      currentSection = data.currentSection ?? 0;
+      timeLeft = data.timeLeft ?? 0;
+      isRunning = data.isRunning ?? false;
+      lastUpdate = data.lastUpdate ?? Date.now();
+
+      renderSections();
+      updateTitle();
+      updateDisplay();
+
+      // Clear existing timer interval to avoid duplicates
+      if (timerInterval) clearInterval(timerInterval);
+
+      if (isRunning) {
+        timerInterval = setInterval(() => {
+          updateDisplay();
+          saveState();
+        }, 1000);
+      }
+    });
+  }
+
   function startTimer() {
-    if (!sections[currentSection] || isRunning) return;
+    if (isRunning) return;
+    if (!sections[currentSection]) return;
+
+    // If timeLeft is zero or undefined, reset to current section duration
+    const currentTimeLeft = computeTimeLeft();
+    if (currentTimeLeft <= 0) {
+      timeLeft = sections[currentSection].duration;
+      lastUpdate = Date.now();
+    } else {
+      timeLeft = currentTimeLeft;
+      lastUpdate = Date.now();
+    }
     isRunning = true;
     saveState();
+
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      updateDisplay();
+      saveState();
+    }, 1000);
   }
 
   function pauseTimer() {
     if (!isRunning) return;
+    updateDisplay();
     isRunning = false;
     saveState();
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
   }
 
   function resetTimer() {
+    pauseTimer();
     if (sections[currentSection]) {
       timeLeft = sections[currentSection].duration;
     } else {
       timeLeft = 0;
     }
-    isRunning = false;
+    lastUpdate = Date.now();
+    updateDisplay();
     saveState();
   }
 
   function nextSection() {
     if (currentSection < sections.length - 1) {
       currentSection++;
+      // Reset timer for new section and continue running if was running
       if (sections[currentSection]) {
         timeLeft = sections[currentSection].duration;
+        lastUpdate = Date.now();
       } else {
         timeLeft = 0;
       }
-      isRunning = true; // auto start on next
+      updateTitle();
+      renderSections();
       saveState();
+
+      if (isRunning) {
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+          updateDisplay();
+          saveState();
+        }, 1000);
+      } else {
+        updateDisplay();
+      }
     }
   }
 
@@ -343,11 +431,23 @@
       currentSection--;
       if (sections[currentSection]) {
         timeLeft = sections[currentSection].duration;
+        lastUpdate = Date.now();
       } else {
         timeLeft = 0;
       }
-      isRunning = true; // auto start on previous
+      updateTitle();
+      renderSections();
       saveState();
+
+      if (isRunning) {
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+          updateDisplay();
+          saveState();
+        }, 1000);
+      } else {
+        updateDisplay();
+      }
     }
   }
 
@@ -358,6 +458,8 @@
     const duration = minutes * 60 + seconds;
     if (!name || duration <= 0) return;
     sections.push({ name, duration });
+    renderSections();
+    updateTitle();
     document.getElementById("section-name").value = "";
     document.getElementById("minutes").value = "";
     document.getElementById("seconds").value = "";
@@ -366,34 +468,16 @@
 
   function removeSection(index) {
     if (isRunning) return alert("Pause timer before removing sections.");
-    if (index < 0 || index >= sections.length) return;
     sections.splice(index, 1);
-    if (currentSection >= sections.length) currentSection = sections.length - 1;
-    if (sections[currentSection]) {
-      timeLeft = sections[currentSection].duration;
-    } else {
+    if (currentSection === index) {
+      currentSection = 0;
       timeLeft = 0;
+      updateDisplay();
+    } else if (currentSection > index) {
+      currentSection--;
     }
-    saveState();
-  }
-
-  // Drag and drop reorder
-  function dragStart(e) {
-    dragStartIndex = +e.target.getAttribute("data-index");
-  }
-
-  function dropSection(e) {
-    const dropTarget = e.target.closest(".section-item");
-    if (!dropTarget) return;
-    const dropIndex = +dropTarget.getAttribute("data-index");
-    const item = sections.splice(dragStartIndex, 1)[0];
-    sections.splice(dropIndex, 0, item);
-
-    // Fix currentSection if affected by reorder
-    if (currentSection === dragStartIndex) currentSection = dropIndex;
-    else if (currentSection > dragStartIndex && currentSection <= dropIndex) currentSection--;
-    else if (currentSection < dragStartIndex && currentSection >= dropIndex) currentSection++;
-
+    renderSections();
+    updateTitle();
     saveState();
   }
 
@@ -416,39 +500,51 @@
     updateTitle();
   }
 
+  function dragStart(e) {
+    dragStartIndex = +e.target.getAttribute("data-index");
+  }
+
+  function dropSection(e) {
+    const dropTarget = e.target.closest(".section-item");
+    if (!dropTarget) return;
+    const dropIndex = +dropTarget.getAttribute("data-index");
+    const item = sections.splice(dragStartIndex, 1)[0];
+    sections.splice(dropIndex, 0, item);
+    if (currentSection === dragStartIndex) currentSection = dropIndex;
+    else if (currentSection > dragStartIndex && currentSection <= dropIndex) currentSection--;
+    else if (currentSection < dragStartIndex && currentSection >= dropIndex) currentSection++;
+    renderSections();
+    saveState();
+  }
+
   function toggleMenu() {
     const menu = document.getElementById("menu-section");
     menu.style.display = menu.style.display === "block" ? "none" : "block";
   }
 
-  // Listen to Firebase changes and update UI & local vars
-  function listenFirebase() {
-    database.ref('timerState').on('value', (snapshot) => {
-      const data = snapshot.val();
-      if (!data) return;
-      if (data.secretKey !== 'PickAllPokemons98') {
-        console.warn("Invalid secret key; ignoring update.");
-        return;
-      }
-
-      // Update local state from Firebase data
-      sections = data.sections || [];
-      currentSection = data.currentSection ?? 0;
-      timeLeft = data.timeLeft ?? 0;
-      isRunning = data.isRunning || false;
-
-      renderSections();
-      updateDisplay();
-      updateTitle();
-
-      // If timer is running, decrement timeLeft every second on Firebase server-side (simulate here)
-      // But since you asked to avoid local timers, you must update Firebase timeLeft externally or manually.
-    });
+  // Initialize default sections if none
+  function init() {
+    if (sections.length === 0) {
+      sections = [
+        { name: "Song 1", duration: 180 },
+        { name: "Song 2", duration: 240 },
+        { name: "Song 3", duration: 300 }
+      ];
+      currentSection = 0;
+      timeLeft = sections[0].duration;
+      lastUpdate = Date.now();
+      saveState();
+    }
+    renderSections();
+    updateDisplay();
+    updateTitle();
   }
 
   window.onload = () => {
-    listenFirebase();
+    loadState();
+    init();
   };
+
 </script>
 
 </body>
