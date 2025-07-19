@@ -325,10 +325,9 @@
   }
 
   function startTimer(save = true) {
-    if (!sections[currentSection] || isRunning) return;
+    if (!sections[currentSection]) return;
     if (timeLeft <= 0) {
       timeLeft = sections[currentSection].duration;
-      updateDisplay();
     }
     isRunning = true;
     clearInterval(timer);
@@ -336,7 +335,7 @@
       timeLeft--;
       updateDisplay();
       if (save) saveState();
-      if (timeLeft < -600) pauseTimer(save); // auto pause after 10 min overrun
+      if (timeLeft < -600) pauseTimer(save);
     }, 1000);
     if (save) saveState();
   }
@@ -359,7 +358,6 @@
     if (save) saveState();
   }
 
-  // Here’s the key change: nextSection continues counting automatically if timer was running
   function nextSection() {
     if (currentSection < sections.length - 1) {
       currentSection++;
@@ -463,6 +461,7 @@
     menu.style.display = menu.style.display === "block" ? "none" : "block";
   }
 
+  // Initialize with a default section if empty
   function init() {
     if (sections.length === 0) {
       sections = [
