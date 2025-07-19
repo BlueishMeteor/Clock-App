@@ -10,7 +10,6 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <style>
-  /* Your existing styles here (omitted for brevity, keep as you have) */
   html, body {
     margin: 0; padding: 0; height: 100%;
     background-color: #000;
@@ -440,11 +439,17 @@
       renderSections();
       updateDisplay();
       updateTitle();
-
-      // If timer is running, decrement timeLeft every second on Firebase server-side (simulate here)
-      // But since you asked to avoid local timers, you must update Firebase timeLeft externally or manually.
     });
   }
+
+  // Timer tick loop: decrement timeLeft every second if running and save
+  setInterval(() => {
+    if (isRunning) {
+      timeLeft--;
+      saveState();
+      updateDisplay();
+    }
+  }, 1000);
 
   window.onload = () => {
     listenFirebase();
