@@ -220,6 +220,7 @@
   let isRunning = false;
   let dragStartIndex = null;
 
+  // Format seconds as MM:SS (handles negative for overrun)
   function format(seconds) {
     const m = Math.floor(Math.abs(seconds) / 60);
     const s = Math.abs(seconds) % 60;
@@ -289,6 +290,7 @@
     predictedEndEl.textContent = "Predicted End: " + predictedEnd.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
   }
 
+  // Save current state to Firebase
   function saveState() {
     database.ref('timerState').set({
       secretKey: 'PickAllPokemons98',
@@ -299,6 +301,7 @@
     });
   }
 
+  // Load state from Firebase and listen for changes
   function loadState() {
     database.ref('timerState').on('value', (snapshot) => {
       const data = snapshot.val();
@@ -324,6 +327,8 @@
     });
   }
 
+  // Start timer ticking every second
+  // save = whether to save state on every tick (default true)
   function startTimer(save = true) {
     if (!sections[currentSection] || isRunning) return;
     if (timeLeft <= 0) {
@@ -336,17 +341,20 @@
       timeLeft--;
       updateDisplay();
       if (save) saveState();
-      if (timeLeft < -600) pauseTimer(save); // auto pause after 10 min overrun
+      // Auto pause after 10 minutes of overrun
+      if (timeLeft < -600) pauseTimer(save);
     }, 1000);
     if (save) saveState();
   }
 
+  // Pause the timer
   function pauseTimer(save = true) {
     isRunning = false;
     clearInterval(timer);
     if (save) saveState();
   }
 
+  // Reset timer for current section
   function resetTimer(save = true) {
     pauseTimer(save);
     if (sections[currentSection]) {
@@ -359,6 +367,7 @@
     if (save) saveState();
   }
 
+  // Move to next section and continue counting automatically
   function nextSection() {
     if (currentSection < sections.length - 1) {
       currentSection++;
@@ -367,14 +376,16 @@
       updateTitle();
       if (isRunning) {
         clearInterval(timer);
-        startTimer(false);  // continue counting automatically
+        startTimer(false);
+        saveState(); // Save immediately so viewer updates
       } else {
         updateDisplay();
+        saveState();
       }
-      saveState();
     }
   }
 
+  // Move to previous section and continue counting automatically
   function previousSection() {
     if (currentSection > 0) {
       currentSection--;
@@ -383,14 +394,16 @@
       updateTitle();
       if (isRunning) {
         clearInterval(timer);
-        startTimer(false);  // continue counting automatically
+        startTimer(false);
+        saveState();
       } else {
         updateDisplay();
+        saveState();
       }
-      saveState();
     }
   }
 
+  // Add a new section to schedule
   function addSection() {
     const name = document.getElementById("section-name").value.trim();
     const minutes = parseInt(document.getElementById("minutes").value) || 0;
@@ -406,6 +419,7 @@
     saveState();
   }
 
+  // Remove a section by index (only if timer not running)
   function removeSection(index) {
     if (isRunning) return;
     sections.splice(index, 1);
@@ -421,6 +435,7 @@
     saveState();
   }
 
+  // Render the list of sections in the menu
   function renderSections() {
     const list = document.getElementById("section-list");
     list.innerHTML = "";
@@ -440,6 +455,7 @@
     updateTitle();
   }
 
+  // Drag and drop handlers for reordering sections
   function dragStart(e) {
     dragStartIndex = +e.target.getAttribute("data-index");
   }
@@ -450,19 +466,23 @@
     const dropIndex = +dropTarget.getAttribute("data-index");
     const item = sections.splice(dragStartIndex, 1)[0];
     sections.splice(dropIndex, 0, item);
+
+    // Adjust currentSection index if needed
     if (currentSection === dragStartIndex) currentSection = dropIndex;
     else if (currentSection > dragStartIndex && currentSection <= dropIndex) currentSection--;
     else if (currentSection < dragStartIndex && currentSection >= dropIndex) currentSection++;
+
     renderSections();
     saveState();
   }
 
+  // Toggle the schedule menu visibility
   function toggleMenu() {
     const menu = document.getElementById("menu-section");
     menu.style.display = menu.style.display === "block" ? "none" : "block";
   }
 
-  // Initialize with a default section if empty
+  // Initialize default schedule if empty
   function init() {
     if (sections.length === 0) {
       sections = [
@@ -479,6 +499,7 @@
     updateTitle();
   }
 
+  // Load state on page load
   window.onload = () => {
     loadState();
     setTimeout(() => {
