@@ -352,9 +352,9 @@
   function startTimer(save = true) {
     if (!sections[currentSection]) return;
 
+    // Bonus: Initialize timeLeft if <= 0
     if (timeLeft <= 0) {
       timeLeft = sections[currentSection].duration;
-      updateDisplay();
     }
 
     isRunning = true;
@@ -375,7 +375,7 @@
   }
 
   function resetTimer(save = true) {
-    pauseTimer(save);
+    // Just reset timeLeft and update UI, no pause here
     if (sections[currentSection]) {
       timeLeft = sections[currentSection].duration;
     } else {
@@ -390,8 +390,8 @@
     if (currentSection < sections.length - 1) {
       currentSection++;
       resetTimer(false);
-      updateTitle();
       renderSections();
+      updateTitle();
       if (isRunning) startTimer();
       else updateDisplay();
       saveState();
@@ -402,8 +402,8 @@
     if (currentSection > 0) {
       currentSection--;
       resetTimer(false);
-      updateTitle();
       renderSections();
+      updateTitle();
       if (isRunning) startTimer();
       else updateDisplay();
       saveState();
@@ -426,7 +426,7 @@
   }
 
   function removeSection(index) {
-    // Allow removing anytime (even when running)
+    if (isRunning) return;
     sections.splice(index, 1);
     if (currentSection === index) {
       currentSection = 0;
@@ -469,9 +469,11 @@
     const dropIndex = +dropTarget.getAttribute("data-index");
     const item = sections.splice(dragStartIndex, 1)[0];
     sections.splice(dropIndex, 0, item);
+
     if (currentSection === dragStartIndex) currentSection = dropIndex;
     else if (currentSection > dragStartIndex && currentSection <= dropIndex) currentSection--;
     else if (currentSection < dragStartIndex && currentSection >= dropIndex) currentSection++;
+
     renderSections();
     saveState();
   }
