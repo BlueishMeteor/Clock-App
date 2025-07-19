@@ -352,6 +352,11 @@
   function startTimer(save = true) {
     if (!sections[currentSection]) return;
 
+    if (timeLeft <= 0) {
+      timeLeft = sections[currentSection].duration;
+      updateDisplay();
+    }
+
     isRunning = true;
     clearInterval(timer);
     timer = setInterval(() => {
@@ -421,7 +426,7 @@
   }
 
   function removeSection(index) {
-    if (isRunning) return;
+    // Allow removing anytime (even when running)
     sections.splice(index, 1);
     if (currentSection === index) {
       currentSection = 0;
