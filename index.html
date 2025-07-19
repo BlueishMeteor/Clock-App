@@ -199,7 +199,7 @@
 </div>
 
 <script>
-  // Firebase config - replace with your own if needed
+  // Firebase config
   const firebaseConfig = {
     apiKey: "AIzaSyD056thmGLxTwVOU01Qy_KNIqS4aqdW8Bw",
     authDomain: "clockapp-26b10.firebaseapp.com",
@@ -325,9 +325,11 @@
   }
 
   function startTimer(save = true) {
-    if (!sections[currentSection]) return;
-    if (isRunning) return;
-    if (timeLeft <= 0) timeLeft = sections[currentSection].duration;
+    if (!sections[currentSection] || isRunning) return;
+    if (timeLeft <= 0) {
+      timeLeft = sections[currentSection].duration;
+      updateDisplay();
+    }
     isRunning = true;
     clearInterval(timer);
     timer = setInterval(() => {
@@ -359,17 +361,12 @@
 
   function nextSection() {
     if (currentSection < sections.length - 1) {
+      const wasRunning = isRunning;
       currentSection++;
-      // Continue running timer on next section
-      if (isRunning) {
-        timeLeft = sections[currentSection].duration;
-        updateDisplay();
-      } else {
-        timeLeft = sections[currentSection].duration;
-      }
+      resetTimer(false);
       updateTitle();
       renderSections();
-      if (isRunning) startTimer();
+      if (wasRunning) startTimer();
       else updateDisplay();
       saveState();
     }
@@ -377,16 +374,12 @@
 
   function previousSection() {
     if (currentSection > 0) {
+      const wasRunning = isRunning;
       currentSection--;
-      if (isRunning) {
-        timeLeft = sections[currentSection].duration;
-        updateDisplay();
-      } else {
-        timeLeft = sections[currentSection].duration;
-      }
+      resetTimer(false);
       updateTitle();
       renderSections();
-      if (isRunning) startTimer();
+      if (wasRunning) startTimer();
       else updateDisplay();
       saveState();
     }
@@ -446,7 +439,6 @@
   }
 
   function dropSection(e) {
-    e.preventDefault();
     const dropTarget = e.target.closest(".section-item");
     if (!dropTarget) return;
     const dropIndex = +dropTarget.getAttribute("data-index");
@@ -464,7 +456,7 @@
     menu.style.display = menu.style.display === "block" ? "none" : "block";
   }
 
-  // Initialize with default sections if empty
+  // Initialize with a default section if empty
   function init() {
     if (sections.length === 0) {
       sections = [
@@ -484,7 +476,9 @@
   window.onload = () => {
     loadState();
     setTimeout(() => {
-      if (sections.length === 0) init();
+      if (sections.length === 0) {
+        init();
+      }
     }, 2000);
   };
 </script>
