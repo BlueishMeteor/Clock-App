@@ -359,15 +359,11 @@
     if (save) saveState();
   }
 
+  // Here’s the key change: nextSection continues counting automatically if timer was running
   function nextSection() {
     if (currentSection < sections.length - 1) {
       currentSection++;
-      // Reset timer for new section
-      if (sections[currentSection]) {
-        timeLeft = sections[currentSection].duration;
-      } else {
-        timeLeft = 0;
-      }
+      timeLeft = sections[currentSection].duration;
       renderSections();
       updateTitle();
       if (isRunning) {
@@ -383,12 +379,7 @@
   function previousSection() {
     if (currentSection > 0) {
       currentSection--;
-      // Reset timer for new section
-      if (sections[currentSection]) {
-        timeLeft = sections[currentSection].duration;
-      } else {
-        timeLeft = 0;
-      }
+      timeLeft = sections[currentSection].duration;
       renderSections();
       updateTitle();
       if (isRunning) {
@@ -472,7 +463,6 @@
     menu.style.display = menu.style.display === "block" ? "none" : "block";
   }
 
-  // Initialize with a default section if empty
   function init() {
     if (sections.length === 0) {
       sections = [
@@ -499,4 +489,3 @@
   };
 </script>
 </body>
-</html>
