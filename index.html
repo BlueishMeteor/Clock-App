@@ -236,7 +236,7 @@
     } else {
       timerEl.textContent = "00:00";
       timerEl.style.color = "#ef4444";
-      overrunEl.textContent = `Overrun: ${format(-timeLeft)}`;
+      overrunEl.textContent = `Overrun: ${format(timeLeft)}`;
     }
     updateProgressBar();
     updateRemainingTime();
@@ -309,7 +309,7 @@
       }
       sections = data.sections || [];
       currentSection = data.currentSection ?? 0;
-      timeLeft = data.timeLeft ?? (sections[0]?.duration || 0);
+      timeLeft = data.timeLeft ?? 0;
       isRunning = data.isRunning || false;
 
       renderSections();
@@ -362,11 +362,20 @@
   function nextSection() {
     if (currentSection < sections.length - 1) {
       currentSection++;
-      resetTimer(false);
-      updateTitle();
+      // Reset timer for new section
+      if (sections[currentSection]) {
+        timeLeft = sections[currentSection].duration;
+      } else {
+        timeLeft = 0;
+      }
       renderSections();
-      if (isRunning) startTimer();
-      else updateDisplay();
+      updateTitle();
+      if (isRunning) {
+        clearInterval(timer);
+        startTimer();
+      } else {
+        updateDisplay();
+      }
       saveState();
     }
   }
@@ -374,11 +383,20 @@
   function previousSection() {
     if (currentSection > 0) {
       currentSection--;
-      resetTimer(false);
-      updateTitle();
+      // Reset timer for new section
+      if (sections[currentSection]) {
+        timeLeft = sections[currentSection].duration;
+      } else {
+        timeLeft = 0;
+      }
       renderSections();
-      if (isRunning) startTimer();
-      else updateDisplay();
+      updateTitle();
+      if (isRunning) {
+        clearInterval(timer);
+        startTimer();
+      } else {
+        updateDisplay();
+      }
       saveState();
     }
   }
@@ -399,8 +417,7 @@
   }
 
   function removeSection(index) {
-    if (isRunning) return alert("Pause timer before removing sections.");
-    if (index < 0 || index >= sections.length) return;
+    if (isRunning) return;
     sections.splice(index, 1);
     if (currentSection === index) {
       currentSection = 0;
@@ -438,23 +455,14 @@
   }
 
   function dropSection(e) {
-    e.preventDefault();
     const dropTarget = e.target.closest(".section-item");
     if (!dropTarget) return;
     const dropIndex = +dropTarget.getAttribute("data-index");
-    if (dragStartIndex === null || dropIndex === null || dragStartIndex === dropIndex) return;
     const item = sections.splice(dragStartIndex, 1)[0];
     sections.splice(dropIndex, 0, item);
-
-    // Update currentSection index if necessary
-    if (currentSection === dragStartIndex) {
-      currentSection = dropIndex;
-    } else if (currentSection > dragStartIndex && currentSection <= dropIndex) {
-      currentSection--;
-    } else if (currentSection < dragStartIndex && currentSection >= dropIndex) {
-      currentSection++;
-    }
-
+    if (currentSection === dragStartIndex) currentSection = dropIndex;
+    else if (currentSection > dragStartIndex && currentSection <= dropIndex) currentSection--;
+    else if (currentSection < dragStartIndex && currentSection >= dropIndex) currentSection++;
     renderSections();
     saveState();
   }
@@ -464,6 +472,7 @@
     menu.style.display = menu.style.display === "block" ? "none" : "block";
   }
 
+  // Initialize with a default section if empty
   function init() {
     if (sections.length === 0) {
       sections = [
@@ -486,9 +495,8 @@
       if (sections.length === 0) {
         init();
       }
-    }, 1500);
+    }, 2000);
   };
 </script>
-
 </body>
 </html>
