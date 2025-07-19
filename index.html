@@ -325,9 +325,10 @@
   }
 
   function startTimer(save = true) {
-    if (!sections[currentSection]) return;
+    if (!sections[currentSection] || isRunning) return;
     if (timeLeft <= 0) {
       timeLeft = sections[currentSection].duration;
+      updateDisplay();
     }
     isRunning = true;
     clearInterval(timer);
@@ -335,7 +336,7 @@
       timeLeft--;
       updateDisplay();
       if (save) saveState();
-      if (timeLeft < -600) pauseTimer(save);
+      if (timeLeft < -600) pauseTimer(save); // auto pause after 10 min overrun
     }, 1000);
     if (save) saveState();
   }
@@ -366,7 +367,7 @@
       updateTitle();
       if (isRunning) {
         clearInterval(timer);
-        startTimer();
+        startTimer(false);  // continue counting automatically
       } else {
         updateDisplay();
       }
@@ -382,7 +383,7 @@
       updateTitle();
       if (isRunning) {
         clearInterval(timer);
-        startTimer();
+        startTimer(false);  // continue counting automatically
       } else {
         updateDisplay();
       }
