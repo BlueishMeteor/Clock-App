@@ -352,17 +352,12 @@
   function startTimer(save = true) {
     if (!sections[currentSection]) return;
 
-    // Bonus: Initialize timeLeft if <= 0
-    if (timeLeft <= 0) {
-      timeLeft = sections[currentSection].duration;
-    }
-
     isRunning = true;
     clearInterval(timer);
     timer = setInterval(() => {
       timeLeft--;
       updateDisplay();
-      if (save) saveState();
+      if (save) saveState();  // Save to Firebase every second for live sync
       if (timeLeft < -600) pauseTimer(save);
     }, 1000);
     if (save) saveState();
@@ -375,7 +370,7 @@
   }
 
   function resetTimer(save = true) {
-    // Just reset timeLeft and update UI, no pause here
+    pauseTimer(save);
     if (sections[currentSection]) {
       timeLeft = sections[currentSection].duration;
     } else {
@@ -390,8 +385,8 @@
     if (currentSection < sections.length - 1) {
       currentSection++;
       resetTimer(false);
-      renderSections();
       updateTitle();
+      renderSections();
       if (isRunning) startTimer();
       else updateDisplay();
       saveState();
@@ -402,8 +397,8 @@
     if (currentSection > 0) {
       currentSection--;
       resetTimer(false);
-      renderSections();
       updateTitle();
+      renderSections();
       if (isRunning) startTimer();
       else updateDisplay();
       saveState();
@@ -469,11 +464,9 @@
     const dropIndex = +dropTarget.getAttribute("data-index");
     const item = sections.splice(dragStartIndex, 1)[0];
     sections.splice(dropIndex, 0, item);
-
     if (currentSection === dragStartIndex) currentSection = dropIndex;
     else if (currentSection > dragStartIndex && currentSection <= dropIndex) currentSection--;
     else if (currentSection < dragStartIndex && currentSection >= dropIndex) currentSection++;
-
     renderSections();
     saveState();
   }
@@ -498,19 +491,12 @@
     renderSections();
     updateDisplay();
     updateTitle();
+    loadState();
+    startKeepAlive();
   }
 
-  window.onload = () => {
-    loadState();
-    if (document.visibilityState === 'visible') {
-      startKeepAlive();
-    }
-    setTimeout(() => {
-      if (sections.length === 0) {
-        init();
-      }
-    }, 2000);
-  };
+  init();
 </script>
+
 </body>
 </html>
