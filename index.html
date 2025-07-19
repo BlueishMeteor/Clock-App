@@ -215,51 +215,40 @@
 
   let sections = [];
   let currentSection = 0;
+  let timer = null;
+  let timeLeft = 0;
   let isRunning = false;
-  let lastUpdate = 0; // timestamp (ms)
-  let timeLeft = 0;   // seconds at lastUpdate
-  let timerInterval = null;
   let dragStartIndex = null;
 
-  // Format seconds into mm:ss
+  // Timestamp when timeLeft was last saved (in ms)
+  let lastUpdate = 0;
+
   function format(seconds) {
     const m = Math.floor(Math.abs(seconds) / 60);
     const s = Math.abs(seconds) % 60;
     return `${m}:${s.toString().padStart(2, "0")}`;
   }
 
-  // Calculate current timeLeft based on lastUpdate and isRunning
-  function computeTimeLeft() {
-    if (!isRunning) return timeLeft;
-    const now = Date.now();
-    const elapsedSec = Math.floor((now - lastUpdate) / 1000);
-    return timeLeft - elapsedSec;
-  }
-
   function updateDisplay() {
     const timerEl = document.getElementById("timer");
     const overrunEl = document.getElementById("overrun");
-
-    let currentTimeLeft = computeTimeLeft();
-
-    if (currentTimeLeft >= 0) {
-      timerEl.textContent = format(currentTimeLeft);
+    if (timeLeft >= 0) {
+      timerEl.textContent = format(timeLeft);
       timerEl.style.color = "#22c55e";
       overrunEl.textContent = "";
     } else {
       timerEl.textContent = "00:00";
       timerEl.style.color = "#ef4444";
-      overrunEl.textContent = `Overrun: ${format(currentTimeLeft)}`;
+      overrunEl.textContent = `Overrun: ${format(timeLeft)}`;
     }
-
-    updateProgressBar(currentTimeLeft);
-    updateRemainingTime(currentTimeLeft);
+    updateProgressBar();
+    updateRemainingTime();
     updateTotalAndEnd();
   }
 
-  function updateProgressBar(currentTimeLeft) {
+  function updateProgressBar() {
     const total = sections[currentSection]?.duration || 1;
-    const remaining = Math.max(currentTimeLeft, 0);
+    const remaining = Math.max(timeLeft, 0);
     const percent = ((total - remaining) / total) * 100;
     const progressBar = document.getElementById("progress-bar");
     progressBar.style.width = `${percent}%`;
@@ -282,9 +271,9 @@
     }
   }
 
-  function updateRemainingTime(currentTimeLeft) {
+  function updateRemainingTime() {
     const remainingTimeEl = document.getElementById("remaining-time");
-    let remainingSeconds = currentTimeLeft;
+    let remainingSeconds = timeLeft;
     for(let i = currentSection + 1; i < sections.length; i++) {
       remainingSeconds += sections[i].duration;
     }
@@ -304,22 +293,13 @@
   }
 
   function saveState() {
-    // Save current timeLeft as of now (to keep lastUpdate accurate)
-    const now = Date.now();
-    const currentTimeLeft = computeTimeLeft();
-
-    // If timer is running and timeLeft is below zero, stop timer automatically
-    if (isRunning && currentTimeLeft < -600) { // 10 minutes overrun max
-      isRunning = false;
-    }
-
     database.ref('timerState').set({
       secretKey: 'PickAllPokemons98',
       sections,
       currentSection,
-      timeLeft: Math.max(currentTimeLeft, 0),
+      timeLeft,
       isRunning,
-      lastUpdate: now
+      lastUpdate: Date.now()
     });
   }
 
@@ -331,65 +311,82 @@
         console.warn("Invalid secret key in data; ignoring update.");
         return;
       }
-
       sections = data.sections || [];
       currentSection = data.currentSection ?? 0;
       timeLeft = data.timeLeft ?? 0;
-      isRunning = data.isRunning ?? false;
-      lastUpdate = data.lastUpdate ?? Date.now();
+      isRunning = data.isRunning || false;
+      lastUpdate = data.lastUpdate || Date.now();
 
-      renderSections();
-      updateTitle();
-      updateDisplay();
-
-      // Clear existing timer interval to avoid duplicates
-      if (timerInterval) clearInterval(timerInterval);
-
-      if (isRunning) {
-        timerInterval = setInterval(() => {
-          updateDisplay();
-          saveState();
-        }, 1000);
-      }
+      updateAfterLoad();
     });
   }
 
-  function startTimer() {
-    if (isRunning) return;
-    if (!sections[currentSection]) return;
+  // Call this after loading from Firebase to recalc and start timer if running
+  function updateAfterLoad() {
+    // Calculate elapsed time since last update
+    const now = Date.now();
+    const elapsedSeconds = Math.floor((now - lastUpdate) / 1000);
 
-    // If timeLeft is zero or undefined, reset to current section duration
-    const currentTimeLeft = computeTimeLeft();
-    if (currentTimeLeft <= 0) {
-      timeLeft = sections[currentSection].duration;
-      lastUpdate = Date.now();
+    if (isRunning) {
+      timeLeft -= elapsedSeconds;
+
+      // If timeLeft < 0, consider if you want to auto advance, or keep counting negative
+      // For now just keep counting negative (overrun)
+    }
+
+    // Update lastUpdate to now so next interval is accurate
+    lastUpdate = now;
+
+    updateDisplay();
+    renderSections();
+    updateTitle();
+
+    if (isRunning) {
+      startTimer(false);
     } else {
-      timeLeft = currentTimeLeft;
-      lastUpdate = Date.now();
+      pauseTimer(false);
+    }
+  }
+
+  // Start timer with option to saveState (default true)
+  function startTimer(save = true) {
+    if (!sections[currentSection] || isRunning) return;
+    if (timeLeft <= 0) {
+      timeLeft = sections[currentSection].duration;
     }
     isRunning = true;
-    saveState();
+    lastUpdate = Date.now();
 
-    if (timerInterval) clearInterval(timerInterval);
-    timerInterval = setInterval(() => {
-      updateDisplay();
-      saveState();
-    }, 1000);
+    clearInterval(timer);
+    timer = setInterval(() => {
+      const now = Date.now();
+      const elapsedSeconds = Math.floor((now - lastUpdate) / 1000);
+      if (elapsedSeconds > 0) {
+        timeLeft -= elapsedSeconds;
+        lastUpdate = now;
+        updateDisplay();
+
+        if (timeLeft < -600) { // auto pause after 10 min overrun
+          pauseTimer();
+        }
+
+        if (save) saveState();
+      }
+    }, 500);
+
+    if (save) saveState();
   }
 
-  function pauseTimer() {
-    if (!isRunning) return;
-    updateDisplay();
+  // Pause timer with option to saveState (default true)
+  function pauseTimer(save = true) {
     isRunning = false;
-    saveState();
-    if (timerInterval) {
-      clearInterval(timerInterval);
-      timerInterval = null;
-    }
+    clearInterval(timer);
+    if (save) saveState();
   }
 
-  function resetTimer() {
-    pauseTimer();
+  // Reset timer to current section duration, optionally save
+  function resetTimer(save = true) {
+    pauseTimer(save);
     if (sections[currentSection]) {
       timeLeft = sections[currentSection].duration;
     } else {
@@ -397,57 +394,31 @@
     }
     lastUpdate = Date.now();
     updateDisplay();
-    saveState();
+    updateTitle();
+    if (save) saveState();
   }
 
   function nextSection() {
     if (currentSection < sections.length - 1) {
       currentSection++;
-      // Reset timer for new section and continue running if was running
-      if (sections[currentSection]) {
-        timeLeft = sections[currentSection].duration;
-        lastUpdate = Date.now();
-      } else {
-        timeLeft = 0;
-      }
+      resetTimer(false);
       updateTitle();
       renderSections();
+      if (isRunning) startTimer();
+      else updateDisplay();
       saveState();
-
-      if (isRunning) {
-        if (timerInterval) clearInterval(timerInterval);
-        timerInterval = setInterval(() => {
-          updateDisplay();
-          saveState();
-        }, 1000);
-      } else {
-        updateDisplay();
-      }
     }
   }
 
   function previousSection() {
     if (currentSection > 0) {
       currentSection--;
-      if (sections[currentSection]) {
-        timeLeft = sections[currentSection].duration;
-        lastUpdate = Date.now();
-      } else {
-        timeLeft = 0;
-      }
+      resetTimer(false);
       updateTitle();
       renderSections();
+      if (isRunning) startTimer();
+      else updateDisplay();
       saveState();
-
-      if (isRunning) {
-        if (timerInterval) clearInterval(timerInterval);
-        timerInterval = setInterval(() => {
-          updateDisplay();
-          saveState();
-        }, 1000);
-      } else {
-        updateDisplay();
-      }
     }
   }
 
@@ -468,6 +439,7 @@
 
   function removeSection(index) {
     if (isRunning) return alert("Pause timer before removing sections.");
+    if (index < 0 || index >= sections.length) return;
     sections.splice(index, 1);
     if (currentSection === index) {
       currentSection = 0;
@@ -522,29 +494,27 @@
     menu.style.display = menu.style.display === "block" ? "none" : "block";
   }
 
-  // Initialize default sections if none
+  // Initialize with default sections if empty
   function init() {
     if (sections.length === 0) {
       sections = [
-        { name: "Song 1", duration: 180 },
-        { name: "Song 2", duration: 240 },
-        { name: "Song 3", duration: 300 }
+        { name: "Call to Worship", duration: 180 },
+        { name: "Prayers", duration: 60 },
+        { name: "Sermon", duration: 900 }
       ];
       currentSection = 0;
       timeLeft = sections[0].duration;
-      lastUpdate = Date.now();
       saveState();
     }
-    renderSections();
     updateDisplay();
     updateTitle();
+    renderSections();
   }
 
   window.onload = () => {
     loadState();
     init();
   };
-
 </script>
 
 </body>
