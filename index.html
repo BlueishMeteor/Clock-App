@@ -3,13 +3,14 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Church Clock App</title>
+<title>Church Clock App - Firebase Driven</title>
 
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <style>
+  /* Your existing styles here (omitted for brevity, keep as you have) */
   html, body {
     margin: 0; padding: 0; height: 100%;
     background-color: #000;
@@ -215,17 +216,18 @@
 
   let sections = [];
   let currentSection = 0;
-  let timer = null;
   let timeLeft = 0;
   let isRunning = false;
   let dragStartIndex = null;
 
+  // Format seconds to mm:ss, handles negative for overrun
   function format(seconds) {
     const m = Math.floor(Math.abs(seconds) / 60);
     const s = Math.abs(seconds) % 60;
     return `${m}:${s.toString().padStart(2, "0")}`;
   }
 
+  // Update UI elements
   function updateDisplay() {
     const timerEl = document.getElementById("timer");
     const overrunEl = document.getElementById("overrun");
@@ -289,6 +291,7 @@
     predictedEndEl.textContent = "Predicted End: " + predictedEnd.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
   }
 
+  // Save entire state to Firebase
   function saveState() {
     database.ref('timerState').set({
       secretKey: 'PickAllPokemons98',
@@ -299,88 +302,51 @@
     });
   }
 
-  function loadState() {
-    database.ref('timerState').on('value', (snapshot) => {
-      const data = snapshot.val();
-      if (!data) return;
-      if (data.secretKey !== 'PickAllPokemons98') {
-        console.warn("Invalid secret key in data; ignoring update.");
-        return;
-      }
-      sections = data.sections || [];
-      currentSection = data.currentSection ?? 0;
-      timeLeft = data.timeLeft ?? 0;
-      isRunning = data.isRunning || false;
-
-      renderSections();
-      updateDisplay();
-      updateTitle();
-
-      if (isRunning) {
-        startTimer(false);
-      } else {
-        pauseTimer(false);
-      }
-    });
-  }
-
-  function startTimer(save = true) {
+  // User action handlers
+  function startTimer() {
     if (!sections[currentSection] || isRunning) return;
-    if (timeLeft <= 0) {
-      timeLeft = sections[currentSection].duration;
-      updateDisplay();
-    }
     isRunning = true;
-    clearInterval(timer);
-    timer = setInterval(() => {
-      timeLeft--;
-      updateDisplay();
-      if (save) saveState();
-      if (timeLeft < -600) pauseTimer(save); // auto pause after 10 min overrun
-    }, 1000);
-    if (save) saveState();
+    saveState();
   }
 
-  function pauseTimer(save = true) {
+  function pauseTimer() {
+    if (!isRunning) return;
     isRunning = false;
-    clearInterval(timer);
-    if (save) saveState();
+    saveState();
   }
 
-  function resetTimer(save = true) {
-    pauseTimer(save);
+  function resetTimer() {
     if (sections[currentSection]) {
       timeLeft = sections[currentSection].duration;
     } else {
       timeLeft = 0;
     }
-    updateDisplay();
-    updateTitle();
-    if (save) saveState();
+    isRunning = false;
+    saveState();
   }
 
   function nextSection() {
     if (currentSection < sections.length - 1) {
-      const wasRunning = isRunning;
       currentSection++;
-      resetTimer(false);
-      updateTitle();
-      renderSections();
-      if (wasRunning) startTimer();
-      else updateDisplay();
+      if (sections[currentSection]) {
+        timeLeft = sections[currentSection].duration;
+      } else {
+        timeLeft = 0;
+      }
+      isRunning = true; // auto start on next
       saveState();
     }
   }
 
   function previousSection() {
     if (currentSection > 0) {
-      const wasRunning = isRunning;
       currentSection--;
-      resetTimer(false);
-      updateTitle();
-      renderSections();
-      if (wasRunning) startTimer();
-      else updateDisplay();
+      if (sections[currentSection]) {
+        timeLeft = sections[currentSection].duration;
+      } else {
+        timeLeft = 0;
+      }
+      isRunning = true; // auto start on previous
       saveState();
     }
   }
@@ -392,8 +358,6 @@
     const duration = minutes * 60 + seconds;
     if (!name || duration <= 0) return;
     sections.push({ name, duration });
-    renderSections();
-    updateTitle();
     document.getElementById("section-name").value = "";
     document.getElementById("minutes").value = "";
     document.getElementById("seconds").value = "";
@@ -402,16 +366,34 @@
 
   function removeSection(index) {
     if (isRunning) return alert("Pause timer before removing sections.");
+    if (index < 0 || index >= sections.length) return;
     sections.splice(index, 1);
-    if (currentSection === index) {
-      currentSection = 0;
+    if (currentSection >= sections.length) currentSection = sections.length - 1;
+    if (sections[currentSection]) {
+      timeLeft = sections[currentSection].duration;
+    } else {
       timeLeft = 0;
-      updateDisplay();
-    } else if (currentSection > index) {
-      currentSection--;
     }
-    renderSections();
-    updateTitle();
+    saveState();
+  }
+
+  // Drag and drop reorder
+  function dragStart(e) {
+    dragStartIndex = +e.target.getAttribute("data-index");
+  }
+
+  function dropSection(e) {
+    const dropTarget = e.target.closest(".section-item");
+    if (!dropTarget) return;
+    const dropIndex = +dropTarget.getAttribute("data-index");
+    const item = sections.splice(dragStartIndex, 1)[0];
+    sections.splice(dropIndex, 0, item);
+
+    // Fix currentSection if affected by reorder
+    if (currentSection === dragStartIndex) currentSection = dropIndex;
+    else if (currentSection > dragStartIndex && currentSection <= dropIndex) currentSection--;
+    else if (currentSection < dragStartIndex && currentSection >= dropIndex) currentSection++;
+
     saveState();
   }
 
@@ -434,53 +416,49 @@
     updateTitle();
   }
 
-  function dragStart(e) {
-    dragStartIndex = +e.target.getAttribute("data-index");
-  }
-
-  function dropSection(e) {
-    const dropTarget = e.target.closest(".section-item");
-    if (!dropTarget) return;
-    const dropIndex = +dropTarget.getAttribute("data-index");
-    const item = sections.splice(dragStartIndex, 1)[0];
-    sections.splice(dropIndex, 0, item);
-    if (currentSection === dragStartIndex) currentSection = dropIndex;
-    else if (currentSection > dragStartIndex && currentSection <= dropIndex) currentSection--;
-    else if (currentSection < dragStartIndex && currentSection >= dropIndex) currentSection++;
-    renderSections();
-    saveState();
-  }
-
   function toggleMenu() {
     const menu = document.getElementById("menu-section");
     menu.style.display = menu.style.display === "block" ? "none" : "block";
   }
 
-  // Initialize with a default section if empty
-  function init() {
-    if (sections.length === 0) {
-      sections = [
-        { name: "Song 1", duration: 180 },
-        { name: "Song 2", duration: 240 },
-        { name: "Song 3", duration: 300 }
-      ];
-      currentSection = 0;
-      timeLeft = sections[0].duration;
-      saveState();
-    }
-    renderSections();
-    updateDisplay();
-    updateTitle();
+  // Listen to Firebase changes and update UI & local vars
+  function listenFirebase() {
+    database.ref('timerState').on('value', (snapshot) => {
+      const data = snapshot.val();
+      if (!data) return;
+      if (data.secretKey !== 'PickAllPokemons98') {
+        console.warn("Invalid secret key; ignoring update.");
+        return;
+      }
+
+      // Update local state from Firebase data
+      sections = data.sections || [];
+      currentSection = data.currentSection ?? 0;
+      timeLeft = data.timeLeft ?? 0;
+      isRunning = data.isRunning || false;
+
+      renderSections();
+      updateDisplay();
+      updateTitle();
+
+      // Note: Timer decrement is expected to be handled externally or by user actions.
+    });
+  }
+
+  // KEEP TAB ACTIVE FUNCTION
+  // Sends a small "heartbeat" update to Firebase every 30 seconds
+  function keepTabActive() {
+    setInterval(() => {
+      // Update a timestamp in Firebase to keep connection alive
+      database.ref('timerState/lastActive').set(Date.now()).catch(console.error);
+    }, 30000); // every 30 seconds
   }
 
   window.onload = () => {
-    loadState();
-    setTimeout(() => {
-      if (sections.length === 0) {
-        init();
-      }
-    }, 2000);
+    listenFirebase();
+    keepTabActive();
   };
 </script>
+
 </body>
 </html>
