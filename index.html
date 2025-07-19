@@ -3,7 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Church Clock App - Local Timer</title>
+<title>Church Clock App</title>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <style>
   html, body {
@@ -195,6 +199,20 @@
 </div>
 
 <script>
+  // Firebase config
+  const firebaseConfig = {
+    apiKey: "AIzaSyD056thmGLxTwVOU01Qy_KNIqS4aqdW8Bw",
+    authDomain: "clockapp-26b10.firebaseapp.com",
+    projectId: "clockapp-26b10",
+    storageBucket: "clockapp-26b10.firebasestorage.app",
+    messagingSenderId: "381529267609",
+    appId: "1:381529267609:web:3b6565b1b60c2c72acc708",
+    measurementId: "G-SX7DKY8WPQ"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const database = firebase.database();
+
   let sections = [];
   let currentSection = 0;
   let timer = null;
@@ -202,7 +220,6 @@
   let isRunning = false;
   let dragStartIndex = null;
 
-  // Format seconds as M:SS (supports negative for overrun)
   function format(seconds) {
     const m = Math.floor(Math.abs(seconds) / 60);
     const s = Math.abs(seconds) % 60;
@@ -273,32 +290,41 @@
   }
 
   function saveState() {
-    const state = {
+    database.ref('timerState').set({
+      secretKey: 'PickAllPokemons98',
       sections,
       currentSection,
       timeLeft,
       isRunning,
-    };
-    localStorage.setItem("churchClockState", JSON.stringify(state));
+    });
   }
 
   function loadState() {
-    const stateStr = localStorage.getItem("churchClockState");
-    if (!stateStr) return false;
-    try {
-      const data = JSON.parse(stateStr);
-      if (!data.sections || !Array.isArray(data.sections)) return false;
-      sections = data.sections;
+    database.ref('timerState').on('value', (snapshot) => {
+      const data = snapshot.val();
+      if (!data) return;
+      if (data.secretKey !== 'PickAllPokemons98') {
+        console.warn("Invalid secret key in data; ignoring update.");
+        return;
+      }
+      sections = data.sections || [];
       currentSection = data.currentSection ?? 0;
       timeLeft = data.timeLeft ?? 0;
       isRunning = data.isRunning || false;
-      return true;
-    } catch {
-      return false;
-    }
+
+      renderSections();
+      updateDisplay();
+      updateTitle();
+
+      if (isRunning) {
+        startTimer(false);
+      } else {
+        pauseTimer(false);
+      }
+    });
   }
 
-  function startTimer() {
+  function startTimer(save = true) {
     if (!sections[currentSection] || isRunning) return;
     if (timeLeft <= 0) {
       timeLeft = sections[currentSection].duration;
@@ -309,20 +335,20 @@
     timer = setInterval(() => {
       timeLeft--;
       updateDisplay();
-      saveState();
-      if (timeLeft < -600) pauseTimer(); // auto pause after 10 min overrun
+      if (save) saveState();
+      if (timeLeft < -600) pauseTimer(save); // auto pause after 10 min overrun
     }, 1000);
-    saveState();
+    if (save) saveState();
   }
 
-  function pauseTimer() {
+  function pauseTimer(save = true) {
     isRunning = false;
     clearInterval(timer);
-    saveState();
+    if (save) saveState();
   }
 
-  function resetTimer() {
-    pauseTimer();
+  function resetTimer(save = true) {
+    pauseTimer(save);
     if (sections[currentSection]) {
       timeLeft = sections[currentSection].duration;
     } else {
@@ -330,28 +356,31 @@
     }
     updateDisplay();
     updateTitle();
-    saveState();
+    if (save) saveState();
   }
 
   function nextSection() {
     if (currentSection < sections.length - 1) {
+      const wasRunning = isRunning;
       currentSection++;
-      // Keep timer running and continue countdown on next section
-      resetTimer();
-      if (isRunning) startTimer();
-      renderSections();
+      resetTimer(false);
       updateTitle();
+      renderSections();
+      if (wasRunning) startTimer();
+      else updateDisplay();
       saveState();
     }
   }
 
   function previousSection() {
     if (currentSection > 0) {
+      const wasRunning = isRunning;
       currentSection--;
-      resetTimer();
-      if (isRunning) startTimer();
-      renderSections();
+      resetTimer(false);
       updateTitle();
+      renderSections();
+      if (wasRunning) startTimer();
+      else updateDisplay();
       saveState();
     }
   }
@@ -410,7 +439,6 @@
   }
 
   function dropSection(e) {
-    e.preventDefault();
     const dropTarget = e.target.closest(".section-item");
     if (!dropTarget) return;
     const dropIndex = +dropTarget.getAttribute("data-index");
@@ -428,6 +456,7 @@
     menu.style.display = menu.style.display === "block" ? "none" : "block";
   }
 
+  // Initialize with a default section if empty
   function init() {
     if (sections.length === 0) {
       sections = [
@@ -445,15 +474,13 @@
   }
 
   window.onload = () => {
-    if (!loadState()) {
-      init();
-    } else {
-      updateDisplay();
-      updateTitle();
-      if (isRunning) startTimer();
-    }
+    loadState();
+    setTimeout(() => {
+      if (sections.length === 0) {
+        init();
+      }
+    }, 2000);
   };
 </script>
-
 </body>
 </html>
