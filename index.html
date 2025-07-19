@@ -236,7 +236,7 @@
     } else {
       timerEl.textContent = "00:00";
       timerEl.style.color = "#ef4444";
-      overrunEl.textContent = `Overrun: ${format(timeLeft)}`;
+      overrunEl.textContent = `Overrun: ${format(-timeLeft)}`;
     }
     updateProgressBar();
     updateRemainingTime();
@@ -291,6 +291,7 @@
 
   function saveState() {
     database.ref('timerState').set({
+      secretKey: 'PickAllPokemons98',
       sections,
       currentSection,
       timeLeft,
@@ -302,10 +303,13 @@
     database.ref('timerState').on('value', (snapshot) => {
       const data = snapshot.val();
       if (!data) return;
+      if (data.secretKey !== 'PickAllPokemons98') {
+        console.warn("Invalid secret key in data; ignoring update.");
+        return;
       }
       sections = data.sections || [];
       currentSection = data.currentSection ?? 0;
-      timeLeft = data.timeLeft ?? 0;
+      timeLeft = data.timeLeft ?? (sections[0]?.duration || 0);
       isRunning = data.isRunning || false;
 
       renderSections();
@@ -355,25 +359,14 @@
     if (save) saveState();
   }
 
-  // Keep timer running continuously when switching sections
   function nextSection() {
     if (currentSection < sections.length - 1) {
       currentSection++;
-      timeLeft = sections[currentSection].duration;
+      resetTimer(false);
       updateTitle();
       renderSections();
-      updateDisplay();
-
-      if (isRunning) {
-        clearInterval(timer);
-        timer = setInterval(() => {
-          timeLeft--;
-          updateDisplay();
-          saveState();
-          if (timeLeft < -600) pauseTimer();
-        }, 1000);
-      }
-
+      if (isRunning) startTimer();
+      else updateDisplay();
       saveState();
     }
   }
@@ -381,21 +374,11 @@
   function previousSection() {
     if (currentSection > 0) {
       currentSection--;
-      timeLeft = sections[currentSection].duration;
+      resetTimer(false);
       updateTitle();
       renderSections();
-      updateDisplay();
-
-      if (isRunning) {
-        clearInterval(timer);
-        timer = setInterval(() => {
-          timeLeft--;
-          updateDisplay();
-          saveState();
-          if (timeLeft < -600) pauseTimer();
-        }, 1000);
-      }
-
+      if (isRunning) startTimer();
+      else updateDisplay();
       saveState();
     }
   }
@@ -416,7 +399,8 @@
   }
 
   function removeSection(index) {
-    if (isRunning) return;
+    if (isRunning) return alert("Pause timer before removing sections.");
+    if (index < 0 || index >= sections.length) return;
     sections.splice(index, 1);
     if (currentSection === index) {
       currentSection = 0;
@@ -454,14 +438,23 @@
   }
 
   function dropSection(e) {
+    e.preventDefault();
     const dropTarget = e.target.closest(".section-item");
     if (!dropTarget) return;
     const dropIndex = +dropTarget.getAttribute("data-index");
+    if (dragStartIndex === null || dropIndex === null || dragStartIndex === dropIndex) return;
     const item = sections.splice(dragStartIndex, 1)[0];
     sections.splice(dropIndex, 0, item);
-    if (currentSection === dragStartIndex) currentSection = dropIndex;
-    else if (currentSection > dragStartIndex && currentSection <= dropIndex) currentSection--;
-    else if (currentSection < dragStartIndex && currentSection >= dropIndex) currentSection++;
+
+    // Update currentSection index if necessary
+    if (currentSection === dragStartIndex) {
+      currentSection = dropIndex;
+    } else if (currentSection > dragStartIndex && currentSection <= dropIndex) {
+      currentSection--;
+    } else if (currentSection < dragStartIndex && currentSection >= dropIndex) {
+      currentSection++;
+    }
+
     renderSections();
     saveState();
   }
@@ -471,7 +464,6 @@
     menu.style.display = menu.style.display === "block" ? "none" : "block";
   }
 
-  // Initialize with default sections if none saved
   function init() {
     if (sections.length === 0) {
       sections = [
@@ -494,8 +486,9 @@
       if (sections.length === 0) {
         init();
       }
-    }, 2000);
+    }, 1500);
   };
 </script>
+
 </body>
 </html>
